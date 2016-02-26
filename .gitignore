@@ -1,0 +1,6 @@
+__pycache__/*
+*.pyc
+
+build/*
+dist/*
+whisker_serial_order.egg-info/*
