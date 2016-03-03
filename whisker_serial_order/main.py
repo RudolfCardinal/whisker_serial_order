@@ -27,16 +27,18 @@ Serial order task for Whisker.
 import argparse
 import logging
 log = logging.getLogger(__name__)
-import os
+import subprocess
 import sys
+import traceback
 
 import PySide
+from PySide.QtGui import QApplication
 from whisker.debug_qt import enable_signal_debugging_simply
 from whisker.logsupport import (
     configure_logger_for_colour,
     copy_all_logs_to_file,
 )
-from whisker.qtclient import WhiskerOwner
+import sadisplay
 from whisker.qtsupport import run_gui
 from whisker.sqlalchemysupport import (
     get_current_and_head_revision,
@@ -44,22 +46,21 @@ from whisker.sqlalchemysupport import (
 )
 import whisker.version
 
-# http://stackoverflow.com/questions/16981921/relative-imports-in-python-3
-SCRIPT_DIR = os.path.dirname(os.path.realpath(os.path.join(
-    os.getcwd(), os.path.expanduser(__file__))))
-sys.path.append(os.path.normpath(os.path.join(SCRIPT_DIR, os.pardir)))
-# Now we can import from our own package:
-
-from whisker_serial_order.constants import (
-    DATABASE_ENV_VAR_NOT_SPECIFIED,
+from .constants import (
+    ALEMBIC_BASE_DIR,
+    ALEMBIC_CONFIG_FILENAME,
     DB_URL_ENV_VAR,
+    MSG_DB_ENV_VAR_NOT_SPECIFIED,
+    WRONG_DATABASE_VERSION_STUB,
 )
-from whisker_serial_order.gui import (
+from .gui import (
     MainWindow,
     NoDatabaseSpecifiedWindow,
     WrongDatabaseVersionWindow,
 )
-from whisker_serial_order.version import VERSION
+import whisker_serial_order.models as models
+from .settings import dbsettings, set_database_url
+from .version import VERSION
 
 
 # =============================================================================
@@ -76,7 +77,7 @@ def main():
     parser.add_argument("--logfile", default=None,
                         help="Filename to append log to")
     parser.add_argument('--verbose', '-v', action='count', default=0,
-                        help="Be verbose (use twice for extra verbosity)")
+                        help="Be verbose. (Use twice for extra verbosity.)")
     parser.add_argument('--upgrade-database', action="store_true",
                         help="Upgrade database to current version.")
     parser.add_argument('--debug-qt-signals', action="store_true",
@@ -87,6 +88,19 @@ def main():
         "environment variable).".format(DB_URL_ENV_VAR))
     parser.add_argument('--gui', '-g', action="store_true",
                         help="GUI mode only")
+    parser.add_argument('--schema', action="store_true",
+                        help="Generate schema picture and stop")
+    parser.add_argument(
+        "--java", default='java',
+        help="Java executable (for schema diagrams); default is 'java'")
+    parser.add_argument(
+        "--plantuml", default='plantuml.jar',
+        help="PlantUML Java .jar file (for schema diagrams); default "
+        "is 'plantuml.jar'")
+    parser.add_argument(
+        "--schemastem", default='schema',
+        help="Stem for output filenames (for schema diagrams); default is "
+        "'schema'; '.plantuml' and '.png' are appended")
 
     # We could allow extra Qt arguments:
     # args, unparsed_args = parser.parse_known_args()
@@ -99,10 +113,11 @@ def main():
     # -------------------------------------------------------------------------
     # Logging
     # -------------------------------------------------------------------------
-    loglevel = logging.DEBUG if args.verbose >= 1 else logging.INFO
     rootlogger = logging.getLogger()
-    rootlogger.setLevel(loglevel)
+    rootlogger.setLevel(logging.DEBUG if args.verbose >= 1 else logging.INFO)
     configure_logger_for_colour(rootlogger)  # configure root logger
+    logging.getLogger('whisker').setLevel(logging.DEBUG if args.verbose >= 2
+                                          else logging.INFO)
     if args.logfile:
         copy_all_logs_to_file(args.logfile)
 
@@ -119,44 +134,58 @@ def main():
     in_bundle = getattr(sys, 'frozen', False)
     if in_bundle:
         args.gui = True
-        logger.debug("Running inside a PyInstaller bundle")
+        log.debug("Running inside a PyInstaller bundle")
     if args.gui:
-        logger.debug("Running in GUI-only mode")
+        log.debug("Running in GUI-only mode")
     if args.debug_qt_signals:
         enable_signal_debugging_simply()
+
+    # -------------------------------------------------------------------------
+    # Schema diagram generation only?
+    # -------------------------------------------------------------------------
+    if args.schema:
+        umlfilename = args.schemastem + '.plantuml'
+        log.info("Making schema PlantUML: {}".format(umlfilename))
+        desc = sadisplay.describe([
+            getattr(models, attr) for attr in dir(models)
+        ])
+        log.debug(desc)
+        with open(umlfilename, 'w') as f:
+            f.write(sadisplay.plantuml(desc))
+        log.info("Making schema PNG: {}".format(args.schemastem + '.png'))
+        cmd = [args.java, '-jar', args.plantuml, umlfilename]
+        log.debug(cmd)
+        subprocess.check_call(cmd)
+        sys.exit(0)
+
+    # -------------------------------------------------------------------------
+    # Create QApplication before we create any windows (or Qt will crash)
+    # -------------------------------------------------------------------------
+    qt_app = QApplication(qt_args)
 
     # -------------------------------------------------------------------------
     # Database
     # -------------------------------------------------------------------------
     # Get URL, or complain
-    database_url = args.dburl or os.getenv(DB_URL_ENV_VAR)
-    if not database_url:
+    if args.dburl:
+        set_database_url(args.dburl)
+    if not dbsettings['url']:
         if args.gui:
-            return run_gui(NoDatabaseSpecifiedWindow(), qt_args)
-        raise ValueError(DATABASE_ENV_VAR_NOT_SPECIFIED)
-    log.debug("Using database URL: {}".format(database_url))
-    dbsettings = {
-        'url': database_url,
-        # 'echo': True,
-        'echo': False,
-        'connect_args': {
-            # 'timeout': 15,
-        },
-    }
-    alembic_config_filename = 'alembic.ini'
-    alembic_base_dir = SCRIPT_DIR
+            return run_gui(qt_app, NoDatabaseSpecifiedWindow())
+        raise ValueError(MSG_DB_ENV_VAR_NOT_SPECIFIED)
+    log.debug("Using database URL: {}".format(dbsettings['url']))
 
     # Has the user requested a command-line database upgrade?
     if args.upgrade_database:
-        sys.exit(upgrade_database(alembic_config_filename, alembic_base_dir))
+        sys.exit(upgrade_database(ALEMBIC_CONFIG_FILENAME, ALEMBIC_BASE_DIR))
     # Is the database at the correct version?
     (current_revision, head_revision) = get_current_and_head_revision(
-        database_url, alembic_config_filename, alembic_base_dir)
+        dbsettings['url'], ALEMBIC_CONFIG_FILENAME, ALEMBIC_BASE_DIR)
     if current_revision != head_revision:
         if args.gui:
             return run_gui(
-                WrongDatabaseVersionWindow(current_revision, head_revision),
-                qt_args
+                qt_app,
+                WrongDatabaseVersionWindow(current_revision, head_revision)
             )
         raise ValueError(WRONG_DATABASE_VERSION_STUB.format(
             head_revision=head_revision,
@@ -165,7 +194,7 @@ def main():
     # -------------------------------------------------------------------------
     # Run app
     # -------------------------------------------------------------------------
-    return run_gui(MainWindow(), qt_args)
+    return run_gui(qt_app, MainWindow(dbsettings))
 
 
 # =============================================================================
@@ -173,4 +202,8 @@ def main():
 # =============================================================================
 
 if __name__ == '__main__':
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as e:
+        traceback.print_exc()
+        sys.exit(1)

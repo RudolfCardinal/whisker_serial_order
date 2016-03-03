@@ -89,7 +89,9 @@ setup(
     install_requires=[
         'PySide==1.2.4',  # Python interface to Qt
         'SQLAlchemy',  # SQL Alchemy database interface
-        'whisker',  # Whisker client library
+        'sqlalchemy-utils',  # http://sqlalchemy-utils.readthedocs.org/
+        'sadisplay',  # SQL Alchemy schema display script
+        'whisker>=0.2.0',  # Whisker client library
 
         # ---------------------------------------------------------------------
         # For development only:
