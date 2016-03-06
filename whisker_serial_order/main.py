@@ -27,6 +27,7 @@ Serial order task for Whisker.
 import argparse
 import logging
 log = logging.getLogger(__name__)
+import random
 import subprocess
 import sys
 import traceback
@@ -41,6 +42,7 @@ from whisker.logsupport import (
 import sadisplay
 from whisker.qtsupport import run_gui
 from whisker.sqlalchemysupport import (
+    database_is_sqlite,
     get_current_and_head_revision,
     upgrade_database,
 )
@@ -174,6 +176,10 @@ def main():
             return run_gui(qt_app, NoDatabaseSpecifiedWindow())
         raise ValueError(MSG_DB_ENV_VAR_NOT_SPECIFIED)
     log.debug("Using database URL: {}".format(dbsettings['url']))
+    if database_is_sqlite(dbsettings):
+        log.critical(
+            "Avoid SQLite: not safe for concurrent use in this context")
+        sys.exit(1)
 
     # Has the user requested a command-line database upgrade?
     if args.upgrade_database:
@@ -194,6 +200,8 @@ def main():
     # -------------------------------------------------------------------------
     # Run app
     # -------------------------------------------------------------------------
+    log.debug("Seeding random number generator")
+    random.seed()
     return run_gui(qt_app, MainWindow(dbsettings))
 
 

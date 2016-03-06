@@ -1,11 +1,15 @@
 #!/usr/bin/env python
 
 import argparse
+import logging
 import os
 import subprocess
 import sys
 if sys.version_info[0] < 3:
     raise AssertionError("Need Python 3")
+
+from whisker.logsupport import configure_logger_for_colour
+from whisker_serial_order.constants import DB_URL_ENV_VAR
 
 N_SEQUENCE_CHARS = 4  # like Django
 
@@ -15,9 +19,20 @@ CODE_DIR = os.path.join(PROJECT_BASE_DIR, 'whisker_serial_order')
 ALEMBIC_VERSIONS_DIR = os.path.join(CODE_DIR, 'alembic', 'versions')
 
 if __name__ == '__main__':
+    rootlogger = logging.getLogger()
+    rootlogger.setLevel(logging.DEBUG)
+    configure_logger_for_colour(rootlogger)  # configure root logger
+
     parser = argparse.ArgumentParser()
     parser.add_argument("message", help="Revision message")
+    parser.add_argument(
+        "--dburl", default=None,
+        help="Database URL (if not specified, task will look in {} "
+        "environment variable).".format(DB_URL_ENV_VAR))
     args = parser.parse_args()
+
+    if args.dburl:
+        os.environ[DB_URL_ENV_VAR] = args.dburl
 
     _, _, existing_version_filenames = next(os.walk(ALEMBIC_VERSIONS_DIR),
                                             (None, None, []))

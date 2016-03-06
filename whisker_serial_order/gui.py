@@ -370,7 +370,7 @@ class MainWindow(QMainWindow):
     # Status summary
     # -------------------------------------------------------------------------
 
-    def report(self, msg=''):
+    def report(self, msg):
         self.status_msg.setText(msg)
 
     # -------------------------------------------------------------------------
@@ -587,6 +587,7 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         self.reinf_pellet_pulse_ms_edit = QLineEdit(placeholderText="e.g. 45")
         self.reinf_interpellet_gap_ms_edit = QLineEdit(
             placeholderText="e.g. 250")
+        self.iti_edit = QLineEdit(placeholderText="e.g. 2000")
 
         # Layout/buttons
         whisker_group = StyledQGroupBox('Whisker')
@@ -611,10 +612,18 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
                           self.reinf_interpellet_gap_ms_edit)
         reinf_group.setLayout(reinf_form)
 
+        iti_group = StyledQGroupBox('Intertrial interval (ITI)')
+        iti_form = QFormLayout()
+        iti_form.addRow("ITI duration (ms)", self.iti_edit)
+        iti_group.setLayout(iti_form)
+
+
+
         main_layout = QVBoxLayout()
         main_layout.addWidget(whisker_group)
         main_layout.addWidget(subject_group)
         main_layout.addWidget(reinf_group)
+        main_layout.addWidget(iti_group)
 
         # Shared code
         TransactionalEditDialogMixin.__init__(self, session, config,
@@ -630,6 +639,7 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
             str(obj.reinf_pellet_pulse_ms or ''))
         self.reinf_interpellet_gap_ms_edit.setText(
             str(obj.reinf_interpellet_gap_ms or ''))
+        self.iti_edit.setText(str(obj.iti_duration_ms or ''))
 
     def dialog_to_object(self, obj):
         # Master config validation and cross-checks.
@@ -651,11 +661,13 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
             assert len(obj.devicegroup) > 0
         except:
             raise ValidationError("Invalid device group name")
+
         try:
             obj.subject = self.subject_edit.text()
             assert len(obj.subject) > 0
         except:
             raise ValidationError("Invalid subject name")
+
         try:
             obj.reinf_n_pellets = int(self.reinf_n_pellets_edit.text())
             assert obj.reinf_n_pellets > 0
@@ -673,3 +685,9 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
             assert obj.reinf_interpellet_gap_ms > 0
         except:
             raise ValidationError("Invalid interpellet gap")
+
+        try:
+            obj.iti_duration_ms = int(self.iti_edit.text())
+            assert obj.iti_duration_ms > 0
+        except:
+            raise ValidationError("Invalid ITI duration")

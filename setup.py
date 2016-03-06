@@ -87,6 +87,9 @@ setup(
     packages=['whisker_serial_order'],
 
     install_requires=[
+        'arrow',  # better datetime
+        'mysqlclient',  # MySQL engine (Python 3 replacement for MySQLdb)
+        'psycopg2',  # PostgreSQL engine
         'PySide==1.2.4',  # Python interface to Qt
         'SQLAlchemy',  # SQL Alchemy database interface
         'sqlalchemy-utils',  # http://sqlalchemy-utils.readthedocs.org/

@@ -4,6 +4,8 @@
 import os
 import string
 
+from attrdict import AttrDict
+
 from .version import VERSION
 
 LINESEP = "=" * 79
@@ -72,3 +74,64 @@ For licensing details see LICENSE.txt.
 )
 
 DATETIME_FORMAT_PRETTY = "%Y-%m-%d %H:%M:%S"
+
+# =============================================================================
+# Whisker devices (DI = digital in; DO = digital out)
+# =============================================================================
+# see http://www.whiskercontrol.com/help/FiveChoice.pdf
+
+N_HOLES = 5
+ALL_HOLE_NUMS = list(range(1, N_HOLES + 1))
+# 1-based for task; 0-based for device definition file
+
+DEV_DI = AttrDict({  # Digital inputs
+    'MAGSENSOR': 'REARPANEL',
+})
+for h in ALL_HOLE_NUMS:
+    DEV_DI["HOLE_{}".format(h)] = "HOLE_{}".format(h - 1)
+
+DEV_DO = AttrDict({
+    'HOUSELIGHT': 'HOUSELIGHT',
+    'PELLET': 'PELLET',
+    'MAGLIGHT': 'TRAYLIGHT',
+})
+for h in ALL_HOLE_NUMS:
+    DEV_DO["STIMLIGHT_{}".format(h)] = "STIMLIGHT_{}".format(h - 1)
+
+# =============================================================================
+# Events
+# =============================================================================
+
+WEV = AttrDict({  # Whisker events (Whisker -> task)
+    'MAGPOKE': 'mag_poke',
+    'RESPONSE_1': 'response_hole_1',
+    'RESPONSE_2': 'response_hole_2',
+    'RESPONSE_3': 'response_hole_3',
+    'RESPONSE_4': 'response_hole_4',
+    'RESPONSE_5': 'response_hole_5',
+    'REINF_END': 'reinf_end',
+    'ITI_END': 'iti_end',
+})
+
+TEV = AttrDict({  # Task events
+    'SESSION_START': 'session_start',
+    'SESSION_END': 'session_end',
+    'TRIAL_START': 'trial_start',
+    'TRIAL_END': 'trial_end',
+    'PRESENT_LIGHT_1': 'present_light_1',
+    'PRESENT_LIGHT_2': 'present_light_2',
+    'PRESENT_LIGHT_3': 'present_light_3',
+    'PRESENT_LIGHT_4': 'present_light_4',
+    'PRESENT_LIGHT_5': 'present_light_5',
+    'REQUIRE_MAGPOKE': 'require_magpoke',
+    'PRESENT_CHOICE': 'present_choice',
+    'ITI_START': 'iti_start',
+    'REINFORCE': 'reinforce',
+})
+
+MAX_EVENT_LENGTH = 40
+
+assert max(len(x) for x in TEV.values()) <= MAX_EVENT_LENGTH, (
+    "Bug: MAX_EVENT_LENGTH is shorter than some values in TEV")
+assert max(len(x) for x in WEV.values()) <= MAX_EVENT_LENGTH, (
+    "Bug: MAX_EVENT_LENGTH is shorter than some values in WEV")

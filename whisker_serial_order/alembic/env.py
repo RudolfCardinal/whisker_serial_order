@@ -2,18 +2,13 @@
 # whisker_serial_order/alembic/env.py
 
 import logging
-logger = logging.getLogger(__name__)
-
+log = logging.getLogger(__name__)
+from whisker.logsupport import configure_logger_for_colour
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-config = context.config
-
 from whisker_serial_order.models import Base
-target_metadata = Base.metadata
-
 from whisker_serial_order.settings import dbsettings
-config.set_main_option('sqlalchemy.url', dbsettings['url'])
 
 
 def run_migrations_offline():
@@ -35,6 +30,7 @@ def run_migrations_offline():
         target_metadata=target_metadata,
         render_as_batch=True,  # for SQLite mode; http://stackoverflow.com/questions/30378233  # noqa
         literal_binds=True,
+        compare_type=True,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -58,10 +54,23 @@ def run_migrations_online():
             connection=connection,
             target_metadata=target_metadata,
             render_as_batch=True,  # for SQLite mode; http://stackoverflow.com/questions/30378233  # noqa
+            compare_type=True,
         )
         with context.begin_transaction():
             context.run_migrations()
 
+
+rootlogger = logging.getLogger()
+rootlogger.setLevel(logging.DEBUG)
+configure_logger_for_colour(rootlogger)
+
+log.debug(dbsettings)
+if not dbsettings.get('url'):
+    raise ValueError("Database URL not specified")
+
+config = context.config
+target_metadata = Base.metadata
+config.set_main_option('sqlalchemy.url', dbsettings['url'])
 
 if context.is_offline_mode():
     run_migrations_offline()

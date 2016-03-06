@@ -14,6 +14,8 @@ depends_on = ${repr(depends_on)}
 
 from alembic import op
 import sqlalchemy as sa
+import sqlalchemy_utils
+import whisker
 ${imports if imports else ""}
 
 def upgrade():
