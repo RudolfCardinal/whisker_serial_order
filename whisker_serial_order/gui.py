@@ -29,6 +29,8 @@ from whisker.qtsupport import (
     exit_on_exception,
     GenericAttrTableModel,
     GenericAttrTableView,
+    GenericListModel,
+    ModalEditListView,
     StyledQGroupBox,
     TransactionalDialog,
     TransactionalEditDialogMixin,
@@ -43,10 +45,11 @@ from .constants import (
     ABOUT,
     ALEMBIC_BASE_DIR,
     ALEMBIC_CONFIG_FILENAME,
+    N_HOLES,
     MSG_DB_ENV_VAR_NOT_SPECIFIED,
     WRONG_DATABASE_VERSION_STUB,
 )
-from .models import Config
+from .models import Config, ConfigStage
 from .task import SerialOrderTask
 
 # =============================================================================
@@ -405,6 +408,7 @@ class ConfigAttrTableModel(GenericAttrTableModel):
         ("Server", "server"),
         ("Port", "port"),
         ("Box", "devicegroup"),
+        ("#Stages", "get_n_stages"),
     ]
     DEFAULT_SORT_COLUMN_NAME = "get_modified_at_pretty"
 
@@ -588,6 +592,10 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         self.reinf_interpellet_gap_ms_edit = QLineEdit(
             placeholderText="e.g. 250")
         self.iti_edit = QLineEdit(placeholderText="e.g. 2000")
+        self.stages_lv = ModalEditListView(session, StageConfigDialog,
+                                           readonly=readonly)
+        self.stages_lv.selected_maydelete.connect(
+            self.set_stages_button_states)
 
         # Layout/buttons
         whisker_group = StyledQGroupBox('Whisker')
@@ -617,17 +625,68 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         iti_form.addRow("ITI duration (ms)", self.iti_edit)
         iti_group.setLayout(iti_form)
 
-
+        stages_group = StyledQGroupBox('Stages')
+        stages_layout_1 = QHBoxLayout()
+        stages_layout_2 = QVBoxLayout()
+        self.stages_add_button = QPushButton('Add')
+        self.stages_add_button.clicked.connect(self.add_stage)
+        self.stages_add_button.setEnabled(not readonly)
+        self.stages_remove_button = QPushButton('Remove')
+        self.stages_remove_button.clicked.connect(self.remove_stage)
+        self.stages_remove_button.setEnabled(not readonly)
+        self.stages_edit_button = QPushButton('View' if readonly else 'Edit')
+        self.stages_edit_button.clicked.connect(self.edit_stage)
+        self.stages_up_button = QPushButton('Up')
+        self.stages_up_button.clicked.connect(self.stage_up)
+        self.stages_down_button = QPushButton('Down')
+        self.stages_down_button.clicked.connect(self.stage_down)
+        stages_layout_2.addWidget(self.stages_add_button)
+        stages_layout_2.addWidget(self.stages_remove_button)
+        stages_layout_2.addWidget(self.stages_edit_button)
+        stages_layout_2.addWidget(self.stages_up_button)
+        stages_layout_2.addWidget(self.stages_down_button)
+        stages_layout_2.addStretch()
+        stages_layout_1.addWidget(self.stages_lv)
+        stages_layout_1.addLayout(stages_layout_2)
+        stages_group.setLayout(stages_layout_1)
 
         main_layout = QVBoxLayout()
         main_layout.addWidget(whisker_group)
         main_layout.addWidget(subject_group)
         main_layout.addWidget(reinf_group)
         main_layout.addWidget(iti_group)
+        main_layout.addWidget(stages_group)
 
         # Shared code
         TransactionalEditDialogMixin.__init__(self, session, config,
                                               main_layout, readonly=readonly)
+
+        self.set_stages_button_states(False, False)
+
+    @Slot()
+    def set_stages_button_states(self, selected, maydelete):
+        if not self.readonly:
+            self.stages_remove_button.setEnabled(maydelete)
+        self.stages_edit_button.setEnabled(selected)
+        self.stages_up_button.setEnabled(selected)
+        self.stages_down_button.setEnabled(selected)
+
+    def add_stage(self):
+        config = ConfigStage(config_id=self.obj.id,
+                             stagenum=self.obj.get_n_stages() + 1)
+        self.stages_lv.add_in_nested_transaction(config)
+
+    def remove_stage(self):
+        self.stages_lv.remove_selected()
+
+    def edit_stage(self):
+        self.stages_lv.edit_selected()
+
+    def stage_up(self):
+        pass # ***
+
+    def stage_down(self):
+        pass # ***
 
     def object_to_dialog(self, obj):
         self.server_edit.setText(obj.server)
@@ -640,6 +699,9 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         self.reinf_interpellet_gap_ms_edit.setText(
             str(obj.reinf_interpellet_gap_ms or ''))
         self.iti_edit.setText(str(obj.iti_duration_ms or ''))
+
+        stages_lm = GenericListModel(obj.stages, self)
+        self.stages_lv.setModel(stages_lm)
 
     def dialog_to_object(self, obj):
         # Master config validation and cross-checks.
@@ -691,3 +753,76 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
             assert obj.iti_duration_ms > 0
         except:
             raise ValidationError("Invalid ITI duration")
+
+        try:
+            assert obj.has_stages()
+        except:
+            raise ValidationError("No stages specified")
+
+
+# =============================================================================
+# Edit stage
+# =============================================================================
+
+class StageConfigDialog(QDialog, TransactionalEditDialogMixin):
+    """
+    Edits a ConfigStage object.
+    """
+    def __init__(self, session, stage, parent=None, readonly=False):
+        super().__init__(parent)  # QDialog
+
+        self.setWindowTitle("Configure stage")
+
+        self.seqlen_edit = QLineEdit(placeholderText="range 2-5")
+        self.progress_x_edit = QLineEdit(placeholderText="specify X")
+        self.progress_y_edit = QLineEdit(placeholderText="specify Y")
+        self.stop_n_edit = QLineEdit(placeholderText="specify N")
+
+        sequence_group = StyledQGroupBox('Sequence')
+        sequence_form = QFormLayout()
+        sequence_form.addRow("Sequence length", self.seqlen_edit)
+        sequence_group.setLayout(sequence_form)
+
+        progression_group = StyledQGroupBox('Progression/termination')
+        progression_form = QFormLayout()
+        progression_form.addRow("Progress after X...", self.progress_x_edit)
+        progression_form.addRow("... of last Y trials correct",
+                                self.progress_y_edit)
+        progression_form.addRow("Stop after N trials", self.stop_n_edit)
+        progression_group.setLayout(progression_form)
+
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(sequence_group)
+        main_layout.addWidget(progression_group)
+
+        # Shared code
+        TransactionalEditDialogMixin.__init__(self, session, stage,
+                                              main_layout, readonly=readonly)
+
+    def object_to_dialog(self, obj):
+        self.seqlen_edit.setText(str(obj.sequence_length or ''))
+        self.progress_x_edit.setText(str(obj.progression_criterion_x or ''))
+        self.progress_y_edit.setText(str(obj.progression_criterion_y or ''))
+        self.stop_n_edit.setText(str(obj.stop_after_n_trials or ''))
+
+    def dialog_to_object(self, obj):
+        try:
+            obj.sequence_length = int(self.seqlen_edit.text())
+            assert 2 <= obj.sequence_length <= N_HOLES
+        except:
+            raise ValidationError("Invalid sequence length")
+        try:
+            obj.progression_criterion_x = int(self.progress_x_edit.text())
+            assert obj.progression_criterion_x >= 1
+        except:
+            raise ValidationError("Invalid X")
+        try:
+            obj.progression_criterion_y = int(self.progress_y_edit.text())
+            assert obj.progression_criterion_y >= 1
+        except:
+            raise ValidationError("Invalid Y")
+        try:
+            obj.stop_after_n_trials = int(self.stop_n_edit.text())
+            assert obj.stop_after_n_trials >= 1
+        except:
+            raise ValidationError("Invalid N")

@@ -2,8 +2,10 @@
 # whisker_serial_order/task.py
 
 from enum import Enum, unique
+import itertools
 import logging
 log = logging.getLogger(__name__)
+import operator
 
 import arrow
 from PySide.QtCore import Signal
@@ -26,7 +28,13 @@ from .constants import (
     TEV,
     WEV,
 )
-from .models import Config, Session, Trial, Event
+from .models import (
+    Config,
+    Session,
+    Trial,
+    Event,
+    TrialPlan,
+)
 from .version import VERSION
 
 
@@ -244,13 +252,13 @@ class SerialOrderTask(WhiskerTask):
                     return self.start_iti()
             elif self.state == TaskState.presenting_light:
                 return self.choice_made(holenum, timestamp)
+            elif self.state in [TaskState.awaiting_initiation,
+                                TaskState.awaiting_foodmag_after_light]:
+                self.trials.n_premature += 1
             else:
                 return
 
         log.warn("Unknown event received: {}".format(event))
-
-    def should_stop(self):
-        pass # ***
 
     def show_next_light(self):
         if not self.current_sequence:
@@ -275,6 +283,7 @@ class SerialOrderTask(WhiskerTask):
         self.state = TaskState.presenting_choice
 
     def choice_made(self, response_hole, timestamp):
+        self.session.trials_responded += 1
         correct = self.trial.record_response(response_hole, timestamp)
         if correct:
             self.tasksession.trials_correct += 1
@@ -345,3 +354,21 @@ class SerialOrderTask(WhiskerTask):
     def set_all_hole_lights_off(self):
         for h in ALL_HOLE_NUMS:
             self.line_off(get_stimlight_line(h))
+
+    def create_sequence(self, seqlen=2):
+sequences = list(itertools.permutations(ALL_HOLE_NUMS, seqlen))
+serial_order_choices = list(itertools.combinations(
+    range(1, seqlen + 1), 2))
+triallist = [
+    TrialPlan(x[0], x[1])
+    for x in itertools.product(sequences, serial_order_choices)]
+# The rightmost thing in product() will vary fastest,
+# and the leftmost slowest. Not that this matter, because:
+block_shuffle_by_attr(
+    triallist, ["sequence", "hole_choice", "serial_order_choice"])
+# This means that serial_order_choice will vary fastest.
+shuffle_where_equal_by_attr(triallist, "serial_order_choice")
+log.debug("sequence: {}".format([x.sequence for x in triallist]))
+log.debug("hole_choice: {}".format([x.hole_choice for x in triallist]))
+log.debug("serial_order_choice: {}".format(
+    [x.serial_order_choice for x in triallist]))

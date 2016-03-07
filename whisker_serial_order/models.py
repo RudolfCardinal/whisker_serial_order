@@ -32,6 +32,7 @@ from whisker.sqlalchemysupport import (
 from .constants import (
     DATETIME_FORMAT_PRETTY,
     MAX_EVENT_LENGTH,
+    N_HOLES,
 )
 
 # =============================================================================
@@ -41,6 +42,35 @@ from .constants import (
 
 MASTER_META = MetaData(naming_convention=ALEMBIC_NAMING_CONVENTION)
 Base = declarative_base(metadata=MASTER_META)
+
+
+# =============================================================================
+# Helper functions/classes
+# =============================================================================
+
+def spatial_to_serial_order(hole_sequence, holes):
+    return [hole_sequence.index(h) + 1 for h in holes]
+
+
+def serial_order_to_spatial(hole_sequence, seq_positions):
+    return [hole_sequence[i - 1] for i in seq_positions]
+
+
+class TrialPlan(object):
+    def __init__(self, sequence, serial_order_choice):
+        self.sequence = sequence
+        self.serial_order_choice = sorted(serial_order_choice)
+        self.hole_choice = sorted(
+            serial_order_to_spatial(self.sequence, self.serial_order_choice))
+    def __repr__(self):
+        return (
+            "TrialPlan(sequence={}, serial_order_choice={}, "
+            "hole_choice={})".format(
+                self.sequence, self.serial_order_choice, self.hole_choice)
+        )
+    @property
+    def hole_serial_order_combo(self):
+        return self.serial_order_choice + self.hole_choice
 
 
 # =============================================================================
@@ -103,16 +133,11 @@ class Config(SqlAlchemyAttrDictMixin, Base):
         session.flush()  # but not necessarily commit
         return newconfig
 
-    def get_reinforcer_duration_ms(self):
-        n = self.reinf_n_pellets
-        return (
-            n * self.reinf_pellet_pulse_ms
-            + (n - 1) * self.reinf_interpellet_gap_ms
-        )
+    def get_n_stages(self):
+        return len(self.stages)
 
     def has_stages(self):
-        return len(self.stages) > 0
-        # *** check this before starting
+        return self.get_n_stages() > 0
         # *** check stages are copied into frozen copy
 
 
@@ -132,6 +157,10 @@ class ConfigStage(SqlAlchemyAttrDictMixin, Base):
     progression_criterion_y = Column(Integer)  # ***
     stop_after_n_trials = Column(Integer)  # ***
     # ***
+
+    def __init__(self, **kwargs):
+        self.config_id = kwargs.pop('config_id')
+        self.stagenum = kwargs.pop('stagenum')
 
 
 # =============================================================================
@@ -153,6 +182,8 @@ class Session(SqlAlchemyAttrDictMixin, Base):
     def __init__(self, **kwargs):
         self.config_id = kwargs.pop('config_id')
         self.started_at = kwargs.pop('started_at')
+        self.trials_responded = 0
+        self.trials_correct = 0
 
 
 # =============================================================================
@@ -167,7 +198,6 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
     trialnum = Column(Integer, nullable=False)
     stage_id = Column(Integer, ForeignKey('config_stage.id'), nullable=False)
     stagenum = Column(Integer, nullable=False)
-    # *** reference to stage
 
     started_at = Column(ArrowMicrosecondType)
 
@@ -189,12 +219,15 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
     responded_hole = Column(Integer)  # which hole was chosen?
     response_correct = Column(Boolean)
 
+    n_premature = Column(Integer, nullable=False, default=0)
+
     def __init__(self, **kwargs):
         self.session_id = kwargs.pop('session_id', None)  # may be set later
         self.trialnum = kwargs.pop('trialnum')
         self.started_at = kwargs.pop('started_at')
         self.stage_id = kwargs.pop('stage_id')
         self.stagenum = kwargs.pop('stagenum')
+        self.n_premature = 0
 
     def set_sequence(self, sequence_holes):
         self.sequence_holes = list(sequence_holes)  # make a copy
@@ -206,8 +239,8 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         # Order choice_holes by sequence_holes:
         self.choice_holes = sorted(choice_holes,
                                    key=lambda x: self.sequence_holes.index(x))
-        self.choice_seq_positions = [self.sequence_holes.index(h)
-                                     for h in self.choice_holes]
+        self.choice_seq_positions = spatial_to_serial_order(
+            self.sequence_holes, self.choice_holes)
         self.choice_hole_left = min(self.choice_holes)
         self.choice_hole_right = max(self.choice_holes)
         self.choice_hole_earliest = self.choice_holes[0]
