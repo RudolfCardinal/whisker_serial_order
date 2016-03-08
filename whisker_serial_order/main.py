@@ -34,14 +34,14 @@ import traceback
 
 import PySide
 from PySide.QtGui import QApplication
+import sadisplay
 from whisker.debug_qt import enable_signal_debugging_simply
-from whisker.logsupport import (
+from whisker.logging import (
     configure_logger_for_colour,
     copy_all_logs_to_file,
 )
-import sadisplay
-from whisker.qtsupport import run_gui
-from whisker.sqlalchemysupport import (
+from whisker.qt import run_gui
+from whisker.sqlalchemy import (
     database_is_sqlite,
     get_current_and_head_revision,
     upgrade_database,

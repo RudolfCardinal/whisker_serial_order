@@ -8,7 +8,7 @@ import sys
 if sys.version_info[0] < 3:
     raise AssertionError("Need Python 3")
 
-from whisker.logsupport import configure_logger_for_colour
+from whisker.logging import configure_logger_for_colour
 from whisker_serial_order.constants import DB_URL_ENV_VAR
 
 N_SEQUENCE_CHARS = 4  # like Django

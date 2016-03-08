@@ -5,7 +5,6 @@ from enum import Enum, unique
 import itertools
 import logging
 log = logging.getLogger(__name__)
-import operator
 
 import arrow
 from PySide.QtCore import Signal
@@ -18,8 +17,9 @@ from whisker.constants import (
 )
 from whisker.exceptions import WhiskerCommandFailed
 from whisker.qtclient import WhiskerTask
-from whisker.qtsupport import exit_on_exception
-from whisker.sqlalchemysupport import get_database_session_thread_scope
+from whisker.qt import exit_on_exception
+from whisker.random import block_shuffle_by_attr, shuffle_where_equal_by_attr
+from whisker.sqlalchemy import get_database_session_thread_scope
 
 from .constants import (
     ALL_HOLE_NUMS,
@@ -98,8 +98,10 @@ class SerialOrderTask(WhiskerTask):
         self.stage = None  # current stage config
         self.eventnum_in_session = 0
         self.eventnum_in_trial = 0
-        self.stagenum = 0
+        self.stagenum = None
         self.state = TaskState.not_started
+        self.trialplans = []
+        self.current_sequence = []
 
     def thread_started(self):
         log.debug("thread_started")
@@ -153,7 +155,8 @@ class SerialOrderTask(WhiskerTask):
         self.tasksession.events.append(eventobj)
 
     def create_new_trial(self):
-        self.stage = self.config.stages[self.stagenum]
+        assert self.stagenum is not None
+        self.stage = self.config.stages[self.stagenum - 1]
         if self.trial is not None:
             trialnum = self.trial.trialnum + 1
         else:
@@ -162,8 +165,13 @@ class SerialOrderTask(WhiskerTask):
                            started_at=arrow.now(),
                            stage_id=self.stage.id,
                            stagenum=self.stage.stagenum)
+        trialplan = self.get_trial_plan(self.stage.sequence_length)
+        self.trial.set_sequence(trialplan.sequence)
+        self.trial.set_choice(trialplan.hole_choice)
         self.tasksession.trials.append(self.trial)
         self.eventnum_in_trial = 0
+        self.current_sequence = list(trialplan.sequence)
+        # ... make a copy, but also convert from tuple to list
 
     # -------------------------------------------------------------------------
     # Connection and startup
@@ -171,7 +179,7 @@ class SerialOrderTask(WhiskerTask):
 
     @exit_on_exception
     def on_connect(self):
-        log.info("SerialOrderTask: on_connect")
+        self.info("Connected")
         self.whisker.timestamps(True)
         self.whisker.command(CMD_REPORT_NAME, "SerialOrder", VERSION)
         try:
@@ -182,13 +190,13 @@ class SerialOrderTask(WhiskerTask):
         self.start_task()
 
     def claim(self):
-        log.info("Claiming devices...")
+        self.info("Claiming devices...")
         self.cmd(CMD_CLAIM_GROUP, self.config.devicegroup)
         for d in DEV_DI.values():
             self.cmd(CMD_LINE_CLAIM, self.config.devicegroup, d, FLAG_INPUT)
         for d in DEV_DO.values():
             self.cmd(CMD_LINE_CLAIM, self.config.devicegroup, d, FLAG_OUTPUT)
-        log.info("... devices successfully claimed")
+        self.info("... devices successfully claimed")
 
     def start_task(self):
         self.tasksession = Session(config_id=self.config_id,
@@ -198,11 +206,11 @@ class SerialOrderTask(WhiskerTask):
         for h in ALL_HOLE_NUMS:
             self.whisker.line_set_event(DEV_DI.get('HOLE_{}'.format(h)),
                                         WEV.get('RESPONSE_{}'.format(h)))
-        self.record_event(TEV.TRIAL_START)
-        self.report("Started.")
-        self.start_new_trial()
+        self.record_event(TEV.SESSION_START)
+        self.info("Started.")
+        self.progress_to_next_stage(first=True)
         self.dbsession.commit()
-        self.whisker.debug_callbacks()  # ***
+        # self.whisker.debug_callbacks()
 
     # -------------------------------------------------------------------------
     # Event processing
@@ -210,12 +218,12 @@ class SerialOrderTask(WhiskerTask):
 
     def start_new_trial(self):
         self.create_new_trial()
-        self.current_sequence = [3, 2, 1]  # ***
-        self.trial.set_sequence(self.current_sequence)
-        self.record_event(TEV.START_TRIAL)
+        self.record_event(TEV.TRIAL_START)
         self.whisker.line_on(DEV_DO.HOUSELIGHT)
         self.whisker.line_on(DEV_DO.MAGLIGHT)
+        self.set_all_hole_lights_off()
         self.state = TaskState.awaiting_initiation
+        self.report("Awaiting initiation at food magazine")
 
     @exit_on_exception  # @Slot(str, datetime.datetime, int)
     def on_event(self, event, timestamp, whisker_timestamp_ms):
@@ -240,18 +248,27 @@ class SerialOrderTask(WhiskerTask):
                 return self.show_next_light()
             else:
                 return
+
+        # *** turn on maglight at reinforcement, and off on collection
+
         holenum = get_response_hole_from_event(event)
         if holenum is not None:
             # response to a hole
-            if self.state == TaskState.presenting_choice:
+            if self.state == TaskState.presenting_light:
+                assert self.current_sequence
                 if holenum == self.current_sequence[0]:
                     # correct hole
                     return self.require_next_mag()
                 else:
                     # wrong hole
                     return self.start_iti()
-            elif self.state == TaskState.presenting_light:
-                return self.choice_made(holenum, timestamp)
+            elif self.state == TaskState.presenting_choice:
+                if holenum in self.trial.choice_holes:
+                    # Responded to one of the choices
+                    return self.choice_made(holenum, timestamp)
+                else:
+                    # Reponded elsewhere
+                    return self.start_iti()
             elif self.state in [TaskState.awaiting_initiation,
                                 TaskState.awaiting_foodmag_after_light]:
                 self.trials.n_premature += 1
@@ -263,27 +280,38 @@ class SerialOrderTask(WhiskerTask):
     def show_next_light(self):
         if not self.current_sequence:
             return self.offer_choice()
-        holenum = self.current_sequence.pop(0)
+        self.trial.sequence_n_offered += 1
+        holenum = self.current_sequence[0]
         self.record_event(TEV.get('PRESENT_LIGHT_{}'.format(holenum)))
         self.whisker.line_off(DEV_DO.MAGLIGHT)
         self.whisker.line_on(get_stimlight_line(holenum))
         self.state = TaskState.presenting_light
+        self.report("Presenting light {} (from sequence {})".format(
+            holenum,
+            self.trial.get_sequence_holes_as_str(),
+        ))
 
     def require_next_mag(self):
         self.record_event(TEV.REQUIRE_MAGPOKE)
         self.set_all_hole_lights_off()
-        self.line_on(DEV_DO.MAGLIGHT)
+        self.whisker.line_on(DEV_DO.MAGLIGHT)
+        self.current_sequence.pop(0)
         self.state = TaskState.awaiting_foodmag_after_light
+        self.report("Awaiting magazine response after response to light")
 
     def offer_choice(self):
-        self.trial.set_choice([1, 2])  # ***
         self.record_event(TEV.PRESENT_CHOICE)
+        self.trial.choice_offered = True
         for holenum in self.trial.choice_holes:
             self.whisker.line_on(get_stimlight_line(holenum))
         self.state = TaskState.presenting_choice
+        self.report("Presenting choice {} (after sequence {})".format(
+            self.trial.get_choice_holes_as_str(),
+            self.trial.get_sequence_holes_as_str(),
+        ))
 
     def choice_made(self, response_hole, timestamp):
-        self.session.trials_responded += 1
+        self.tasksession.trials_responded += 1
         correct = self.trial.record_response(response_hole, timestamp)
         if correct:
             self.tasksession.trials_correct += 1
@@ -297,27 +325,45 @@ class SerialOrderTask(WhiskerTask):
             DEV_DO.PELLET,
             count=self.config.reinf_n_pellets,
             on_ms=self.config.reinf_pellet_pulse_ms,
-            off_ms=self.reinf_interpellet_gap_ms,
+            off_ms=self.config.reinf_interpellet_gap_ms,
             on_at_rest=False)
         self.timer(WEV.REINF_END, duration_ms)
         self.state = TaskState.reinforcing
+        self.report("Reinforcing")
 
     def start_iti(self):
         self.record_event(TEV.ITI_START)
         self.whisker.line_off(DEV_DO.HOUSELIGHT)
         self.whisker.line_off(DEV_DO.MAGLIGHT)
         self.set_all_hole_lights_off()
-        self.timer(WEV.ITI_FINISHED, self.config.iti_duration_ms)
+        self.timer(WEV.ITI_END, self.config.iti_duration_ms)
         self.state = TaskState.iti
+        self.report("ITI")
 
-    def iti_finished(self):
-        self.record_event(WEV.ITI_END)
-        self.record_event(WEV.TRIAL_END)
+    def iti_finished_end_trial(self):
+        self.record_event(TEV.TRIAL_END)
+        if self.trial.responded or not self.config.repeat_incomplete_trials:
+            if self.trialplans:
+                self.trialplans.pop(0)
+            else:
+                log.warning("Bug? No trial plan to remove.")
         self.decide_re_next_trial()
 
     def decide_re_next_trial(self):
-        trials_this_stage = self.dbsession.query(Trial).filter(
-            Trial.stagenum == self.stagenum)
+        # Manual way:
+        trials_this_stage = self.dbsession.query(Trial)\
+            .filter(Trial.session_id == self.tasksession.id)\
+            .filter(Trial.stagenum == self.stagenum)\
+            .order_by(Trial.trialnum)\
+            .all()
+
+        # Relationship way, IF appropriately configured
+        # ... http://stackoverflow.com/questions/11578070/sqlalchemy-instrumentedlist-object-has-no-attribute-filter  # noqa
+        # ... http://docs.sqlalchemy.org/en/rel_0_7/orm/collections.html#dynamic-relationship  # noqa
+        # trials_this_stage = self.tasksession.trials\
+        #     .filter(Trial.stagenum == self.stagenum)\
+        #     .count()
+
         if len(trials_this_stage) >= self.stage.progression_criterion_y:
             # Maybe we've passed the stage.
             last_y_trials = trials_this_stage[
@@ -332,8 +378,12 @@ class SerialOrderTask(WhiskerTask):
             return self.end_session()
         self.start_new_trial()
 
-    def progress_to_next_stage(self):
-        self.stagenum += 1
+    def progress_to_next_stage(self, first=False):
+        self.trialplans = []
+        if first:
+            self.stagenum = 1
+        else:
+            self.stagenum += 1
         if self.stagenum >= len(self.config.stages):
             self.end_session()
         else:
@@ -343,32 +393,48 @@ class SerialOrderTask(WhiskerTask):
         self.record_event(TEV.SESSION_END)
         self.whisker.timer_clear_all_events()
         self.whisker.clear_all_callbacks()
+        self.whisker.line_clear_all_events()
         for d in DEV_DO.values():
-            self.line_off(d)
+            self.whisker.line_off(d)
         self.state = TaskState.finished
+        self.report("Finished")
 
     # -------------------------------------------------------------------------
-    # Ancillary functions
+    # Device control functions
     # -------------------------------------------------------------------------
 
     def set_all_hole_lights_off(self):
         for h in ALL_HOLE_NUMS:
-            self.line_off(get_stimlight_line(h))
+            self.whisker.line_off(get_stimlight_line(h))
 
-    def create_sequence(self, seqlen=2):
-sequences = list(itertools.permutations(ALL_HOLE_NUMS, seqlen))
-serial_order_choices = list(itertools.combinations(
-    range(1, seqlen + 1), 2))
-triallist = [
-    TrialPlan(x[0], x[1])
-    for x in itertools.product(sequences, serial_order_choices)]
-# The rightmost thing in product() will vary fastest,
-# and the leftmost slowest. Not that this matter, because:
-block_shuffle_by_attr(
-    triallist, ["sequence", "hole_choice", "serial_order_choice"])
-# This means that serial_order_choice will vary fastest.
-shuffle_where_equal_by_attr(triallist, "serial_order_choice")
-log.debug("sequence: {}".format([x.sequence for x in triallist]))
-log.debug("hole_choice: {}".format([x.hole_choice for x in triallist]))
-log.debug("serial_order_choice: {}".format(
-    [x.serial_order_choice for x in triallist]))
+    # -------------------------------------------------------------------------
+    # Trial planning
+    # -------------------------------------------------------------------------
+
+    def get_trial_plan(self, seqlen):
+        if not self.trialplans:
+            self.trialplans = self.create_trial_plans(seqlen)
+        return self.trialplans[0]
+        # removal occurs elsewhere
+
+    def create_trial_plans(self, seqlen):
+        log.info("Generating new trial plans")
+        sequences = list(itertools.permutations(ALL_HOLE_NUMS, seqlen))
+        serial_order_choices = list(itertools.combinations(
+            range(1, seqlen + 1), 2))
+        triallist = [
+            TrialPlan(x[0], x[1])
+            for x in itertools.product(sequences, serial_order_choices)]
+        # The rightmost thing in product() will vary fastest,
+        # and the leftmost slowest. Not that this matters, because we shuffle:
+        block_shuffle_by_attr(
+            triallist, ["sequence", "hole_choice", "serial_order_choice"])
+        # This means that serial_order_choice will vary fastest.
+        shuffle_where_equal_by_attr(triallist, "serial_order_choice")
+        log.debug("plans: sequence: {}".format(
+            [x.sequence for x in triallist]))
+        log.debug("plans: hole_choice: {}".format(
+            [x.hole_choice for x in triallist]))
+        log.debug("plans: serial_order_choice: {}".format(
+            [x.serial_order_choice for x in triallist]))
+        return triallist

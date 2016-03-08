@@ -3,7 +3,7 @@
 
 import logging
 log = logging.getLogger(__name__)
-from whisker.logsupport import configure_logger_for_colour
+from whisker.logging import configure_logger_for_colour
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 

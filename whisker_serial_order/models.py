@@ -19,10 +19,10 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
 from sqlalchemy_utils import (
-    JSONType,
+    # JSONType,
     ScalarListType,
 )
-from whisker.sqlalchemysupport import (
+from whisker.sqlalchemy import (
     ALEMBIC_NAMING_CONVENTION,
     ArrowMicrosecondType,
     deepcopy_sqla_object,
@@ -32,7 +32,6 @@ from whisker.sqlalchemysupport import (
 from .constants import (
     DATETIME_FORMAT_PRETTY,
     MAX_EVENT_LENGTH,
-    N_HOLES,
 )
 
 # =============================================================================
@@ -62,12 +61,14 @@ class TrialPlan(object):
         self.serial_order_choice = sorted(serial_order_choice)
         self.hole_choice = sorted(
             serial_order_to_spatial(self.sequence, self.serial_order_choice))
+
     def __repr__(self):
         return (
             "TrialPlan(sequence={}, serial_order_choice={}, "
             "hole_choice={})".format(
                 self.sequence, self.serial_order_choice, self.hole_choice)
         )
+
     @property
     def hole_serial_order_combo(self):
         return self.serial_order_choice + self.hole_choice
@@ -98,8 +99,12 @@ class Config(SqlAlchemyAttrDictMixin, Base):
     reinf_interpellet_gap_ms = Column(Integer)
     # ITI
     iti_duration_ms = Column(Integer)
+    # Failed trials
+    repeat_incomplete_trials = Column(Boolean)
 
     def __init__(self, **kwargs):
+        """Must be clonable by deepcopy_sqla_object(), so must accept empty
+        kwargs."""
         self.read_only = kwargs.pop('read_only', False)
         self.server = kwargs.pop('server', 'localhost')
         self.port = kwargs.pop('port', 3233)
@@ -138,7 +143,6 @@ class Config(SqlAlchemyAttrDictMixin, Base):
 
     def has_stages(self):
         return self.get_n_stages() > 0
-        # *** check stages are copied into frozen copy
 
 
 class ConfigStage(SqlAlchemyAttrDictMixin, Base):
@@ -148,19 +152,20 @@ class ConfigStage(SqlAlchemyAttrDictMixin, Base):
     modified_at = Column(ArrowMicrosecondType,
                          default=arrow.now, onupdate=arrow.now)
     config_id = Column(Integer, ForeignKey('config.id'), nullable=False)
-    stagenum = Column(Integer, nullable=False)  # *** must be consecutive and zero-based
+    stagenum = Column(Integer, nullable=False)  # consecutive, 1-based
 
     # Sequence
-    sequence_length = Column(Integer)  # ***
+    sequence_length = Column(Integer)
     # Progress to next stage when X of last Y correct, or total trials complete
-    progression_criterion_x = Column(Integer)  # ***
-    progression_criterion_y = Column(Integer)  # ***
-    stop_after_n_trials = Column(Integer)  # ***
-    # ***
+    progression_criterion_x = Column(Integer)
+    progression_criterion_y = Column(Integer)
+    stop_after_n_trials = Column(Integer)
 
     def __init__(self, **kwargs):
-        self.config_id = kwargs.pop('config_id')
-        self.stagenum = kwargs.pop('stagenum')
+        """Must be clonable by deepcopy_sqla_object(), so must accept empty
+        kwargs."""
+        self.config_id = kwargs.pop('config_id', None)
+        self.stagenum = kwargs.pop('stagenum', None)
 
 
 # =============================================================================
@@ -214,6 +219,9 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
     choice_seqpos_earliest = Column(Integer)  # earliest sequence pos offered (1-based)  # noqa
     choice_seqpos_latest = Column(Integer)  # latest sequence pos offered (1-based)  # noqa
 
+    sequence_n_offered = Column(Integer, nullable=False, default=0)
+    choice_offered = Column(Boolean, nullable=False, default=False)
+
     responded = Column(Boolean, nullable=False, default=False)
     responded_at = Column(ArrowMicrosecondType)
     responded_hole = Column(Integer)  # which hole was chosen?
@@ -234,7 +242,7 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         self.sequence_length = len(sequence_holes)
 
     def set_choice(self, choice_holes):
-        assert len(choice_holes == 2)
+        assert len(choice_holes) == 2
         assert all(x in self.sequence_holes for x in choice_holes)
         # Order choice_holes by sequence_holes:
         self.choice_holes = sorted(choice_holes,
@@ -257,6 +265,12 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         # IMPLEMENTS THE KEY TASK RULE: "Which came first?"
         self.response_correct = response_hole == self.choice_hole_earliest
         return self.response_correct
+
+    def get_sequence_holes_as_str(self):
+        return ",".join(str(x) for x in self.sequence_holes)
+
+    def get_choice_holes_as_str(self):
+        return ",".join(str(x) for x in self.choice_holes)
 
 
 # =============================================================================

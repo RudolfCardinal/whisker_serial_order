@@ -9,6 +9,7 @@ import traceback
 from PySide.QtCore import Qt, Slot
 from PySide.QtGui import (
     QApplication,
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -25,17 +26,17 @@ from PySide.QtGui import (
 )
 from whisker.exceptions import ValidationError
 from whisker.qtclient import WhiskerOwner
-from whisker.qtsupport import (
+from whisker.qt import (
     exit_on_exception,
     GenericAttrTableModel,
     GenericAttrTableView,
-    GenericListModel,
-    ModalEditListView,
+    # GenericListModel,
+    # ModalEditListView,
     StyledQGroupBox,
     TransactionalDialog,
     TransactionalEditDialogMixin,
 )
-from whisker.sqlalchemysupport import (
+from whisker.sqlalchemy import (
     database_is_sqlite,
     session_thread_scope,
     upgrade_database,
@@ -110,6 +111,52 @@ class WrongDatabaseVersionWindow(QDialog):
             QMessageBox.about(
                 self, "Failure",
                 "Failed to upgrade database. Error was: {}".format(str(e)))
+
+
+# =============================================================================
+# Models for table/list views
+# =============================================================================
+
+class ConfigTableModel(GenericAttrTableModel):
+    HEADINGS = [
+        ("ID", "id"),
+        ("Modified", "get_modified_at_pretty",),
+        ("Subject", "subject"),
+        ("Server", "server"),
+        ("Port", "port"),
+        ("Box", "devicegroup"),
+        ("#Stages", "get_n_stages"),
+    ]
+    DEFAULT_SORT_COLUMN_NAME = "get_modified_at_pretty"
+
+    def __init__(self, listdata, session, **kwargs):
+        super().__init__(
+            data=listdata,
+            header=self.HEADINGS,
+            session=session,
+            default_sort_column_name=self.DEFAULT_SORT_COLUMN_NAME,
+            default_sort_order=Qt.DescendingOrder,
+            **kwargs
+        )
+
+
+class ConfigStageTableModel(GenericAttrTableModel):
+    HEADINGS = [
+        ("Stage#", "stagenum"),
+        ("Seq.len.", "sequence_length"),
+        ("Progress X", "progression_criterion_x",),
+        ("Progress Y", "progression_criterion_y"),
+        ("Stop N", "stop_after_n_trials"),
+    ]
+    DEFAULT_SORT_COLUMN_NAME = "get_modified_at_pretty"
+
+    def __init__(self, listdata, session, **kwargs):
+        super().__init__(
+            data=listdata,
+            header=self.HEADINGS,
+            session=session,
+            **kwargs
+        )
 
 
 # =============================================================================
@@ -400,27 +447,6 @@ class MainWindow(QMainWindow):
 # Choose a config
 # =============================================================================
 
-class ConfigAttrTableModel(GenericAttrTableModel):
-    CONFIG_HEADINGS = [
-        ("ID", "id"),
-        ("Modified", "get_modified_at_pretty",),
-        ("Subject", "subject"),
-        ("Server", "server"),
-        ("Port", "port"),
-        ("Box", "devicegroup"),
-        ("#Stages", "get_n_stages"),
-    ]
-    DEFAULT_SORT_COLUMN_NAME = "get_modified_at_pretty"
-
-    def __init__(self, listdata, session, **kwargs):
-        super().__init__(
-            listdata, self.CONFIG_HEADINGS, session,
-            default_sort_column_name=self.DEFAULT_SORT_COLUMN_NAME,
-            default_sort_order=Qt.DescendingOrder,
-            **kwargs
-        )
-
-
 class ConfigPicker(TransactionalDialog):
     """
     Chooses a Config object.
@@ -438,8 +464,10 @@ class ConfigPicker(TransactionalDialog):
         editable_group = StyledQGroupBox('Editable configurations')
         editable_layout = QHBoxLayout()
         editable_button_layout = QVBoxLayout()
-        self.ed_tv = GenericAttrTableView(self.session, ConfigWindow,
+        self.ed_tv = GenericAttrTableView(session=self.session,
+                                          modal_dialog_class=ConfigWindow,
                                           readonly=self.readonly)
+        self.ed_tv.setMinimumWidth(650)
         editable_layout.addWidget(self.ed_tv)
         self.ed_edit_button = QPushButton("View" if readonly else "Edit")
         editable_button_layout.addWidget(self.ed_edit_button)
@@ -460,8 +488,10 @@ class ConfigPicker(TransactionalDialog):
         readonly_group = StyledQGroupBox('Read-only copies (frozen)')
         readonly_layout = QHBoxLayout()
         readonly_button_layout = QVBoxLayout()
-        self.ro_tv = GenericAttrTableView(self.session, ConfigWindow,
+        self.ro_tv = GenericAttrTableView(session=self.session,
+                                          modal_dialog_class=ConfigWindow,
                                           readonly=True)  # always readonly
+        self.ro_tv.setMinimumWidth(650)
         readonly_layout.addWidget(self.ro_tv)
         self.ro_view_button = QPushButton("View")
         readonly_button_layout.addWidget(self.ro_view_button)
@@ -507,9 +537,8 @@ class ConfigPicker(TransactionalDialog):
             Config.read_only == False).all()  # noqa
         ed_configs = self.session.query(Config).filter(
             Config.read_only == True).all()  # noqa
-        ro_model = ConfigAttrTableModel(ro_configs, self.session)
-        ed_model = ConfigAttrTableModel(ed_configs, self.session,
-                                        deletable=False)
+        ro_model = ConfigTableModel(ro_configs, self.session)
+        ed_model = ConfigTableModel(ed_configs, self.session, deletable=False)
         self.ed_tv.setModel(ro_model)
         self.ro_tv.setModel(ed_model)
         return super().exec_()
@@ -570,7 +599,7 @@ class ConfigPicker(TransactionalDialog):
 
 # =============================================================================
 # Edit main config
-# =============================================================================
+# ============================================================================
 
 class ConfigWindow(QDialog, TransactionalEditDialogMixin):
     """
@@ -578,6 +607,7 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
     """
     def __init__(self, session, config, parent=None, readonly=False):
         super().__init__(parent)  # QDialog
+        self.session = session
 
         # Title
         self.setWindowTitle("Configure Serial Order Task")
@@ -592,10 +622,17 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         self.reinf_interpellet_gap_ms_edit = QLineEdit(
             placeholderText="e.g. 250")
         self.iti_edit = QLineEdit(placeholderText="e.g. 2000")
-        self.stages_lv = ModalEditListView(session, StageConfigDialog,
-                                           readonly=readonly)
+        self.repeat_incomplete_check = QCheckBox()
+        # self.stages_lv = ModalEditListView(session, StageConfigDialog,
+        #                                    readonly=readonly)
+        self.stages_lv = GenericAttrTableView(
+            session=self.session,
+            modal_dialog_class=StageConfigDialog,
+            sortable=False,
+            readonly=readonly)
         self.stages_lv.selected_maydelete.connect(
             self.set_stages_button_states)
+        self.stages_lv.setMinimumWidth(400)
 
         # Layout/buttons
         whisker_group = StyledQGroupBox('Whisker')
@@ -620,10 +657,13 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
                           self.reinf_interpellet_gap_ms_edit)
         reinf_group.setLayout(reinf_form)
 
-        iti_group = StyledQGroupBox('Intertrial interval (ITI)')
-        iti_form = QFormLayout()
-        iti_form.addRow("ITI duration (ms)", self.iti_edit)
-        iti_group.setLayout(iti_form)
+        trial_group = StyledQGroupBox('Trial settings')
+        trial_form = QFormLayout()
+        trial_form.addRow("Intertrial interval (ITI) duration (ms)",
+                          self.iti_edit)
+        trial_form.addRow("Repeat incomplete trials",
+                          self.repeat_incomplete_check)
+        trial_group.setLayout(trial_form)
 
         stages_group = StyledQGroupBox('Stages')
         stages_layout_1 = QHBoxLayout()
@@ -654,7 +694,7 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         main_layout.addWidget(whisker_group)
         main_layout.addWidget(subject_group)
         main_layout.addWidget(reinf_group)
-        main_layout.addWidget(iti_group)
+        main_layout.addWidget(trial_group)
         main_layout.addWidget(stages_group)
 
         # Shared code
@@ -675,18 +715,27 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         config = ConfigStage(config_id=self.obj.id,
                              stagenum=self.obj.get_n_stages() + 1)
         self.stages_lv.add_in_nested_transaction(config)
+        self.renumber_refresh()
 
     def remove_stage(self):
         self.stages_lv.remove_selected()
+        self.renumber_refresh()
 
     def edit_stage(self):
         self.stages_lv.edit_selected()
 
     def stage_up(self):
-        pass # ***
+        self.stages_lv.move_selected_up()
+        self.renumber_refresh()
 
     def stage_down(self):
-        pass # ***
+        self.stages_lv.move_selected_down()
+        self.renumber_refresh()
+
+    def renumber_refresh(self):
+        for i, stage in enumerate(self.obj.stages):
+            stage.stagenum = i + 1
+        self.session.flush()
 
     def object_to_dialog(self, obj):
         self.server_edit.setText(obj.server)
@@ -699,8 +748,10 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         self.reinf_interpellet_gap_ms_edit.setText(
             str(obj.reinf_interpellet_gap_ms or ''))
         self.iti_edit.setText(str(obj.iti_duration_ms or ''))
+        self.repeat_incomplete_check.setChecked(
+            obj.repeat_incomplete_trials or False)
 
-        stages_lm = GenericListModel(obj.stages, self)
+        stages_lm = ConfigStageTableModel(obj.stages, self.session)
         self.stages_lv.setModel(stages_lm)
 
     def dialog_to_object(self, obj):
@@ -708,6 +759,7 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         # ---------------------------------------------------------------------
         # Basic checks
         # ---------------------------------------------------------------------
+        self.renumber_refresh()
         try:
             obj.server = self.server_edit.text()
             assert len(obj.server) > 0
@@ -753,6 +805,7 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
             assert obj.iti_duration_ms > 0
         except:
             raise ValidationError("Invalid ITI duration")
+        obj.repeat_incomplete_trials = self.repeat_incomplete_check.isChecked()
 
         try:
             assert obj.has_stages()
