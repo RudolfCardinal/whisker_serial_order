@@ -25,6 +25,7 @@ from PySide.QtGui import (
     QWidget,
 )
 from whisker.exceptions import ValidationError
+from whisker.lang import launch_external_file
 from whisker.qtclient import WhiskerOwner
 from whisker.qt import (
     exit_on_exception,
@@ -46,6 +47,7 @@ from .constants import (
     ABOUT,
     ALEMBIC_BASE_DIR,
     ALEMBIC_CONFIG_FILENAME,
+    MANUAL_FILENAME,
     N_HOLES,
     MSG_DB_ENV_VAR_NOT_SPECIFIED,
     WRONG_DATABASE_VERSION_STUB,
@@ -119,7 +121,7 @@ class WrongDatabaseVersionWindow(QDialog):
 
 class ConfigTableModel(GenericAttrTableModel):
     HEADINGS = [
-        ("ID", "id"),
+        ("ID", "config_id"),
         ("Modified", "get_modified_at_pretty",),
         ("Subject", "subject"),
         ("Server", "server"),
@@ -176,6 +178,7 @@ class MainWindow(QMainWindow):
         self.whisker_task = None
         self.whisker_owner = None
         self.config_id = None
+        self.task_running = False
 
         # ---------------------------------------------------------------------
         # GUI
@@ -271,22 +274,29 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.Yes:
             event.ignore()
             return
+        # "Really sure?"
+        if self.task_running:
+            quit_msg = ("A TASK IS RUNNING! Are you <b>really</b> sure "
+                        "you want to exit?")
+            reply = QMessageBox.question(self, 'Really exit?',  quit_msg,
+                                         QMessageBox.Yes, QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                event.ignore()
+                return
         # If subthreads aren't shut down, we get a segfault when we quit.
         # However, right now, signals aren't being processed because we're in
         # the GUI message loop. So we need to defer the call if subthreads are
         # running
         if not self.anything_running():
-            event.accept()
+            event.accept()  # actually quit
             return
         # Now stop everything
         log.warn("Waiting for threads to finish...")
         self.exit_pending = True
         if self.whisker_owner:
             self.whisker_owner.stop()
-        # Will get a callback to task_finished
-        event.ignore()
-
-    # *** require further check to exit if task is actually running
+        # Will get a callback to whisker_owner_finished
+        event.ignore()  # don't actually quit
 
     # -------------------------------------------------------------------------
     # Configuration
@@ -330,9 +340,11 @@ class MainWindow(QMainWindow):
                 session.commit()
                 # The config object must be attached to a session to use
                 # its attributes (without an explicit detach)
-                self.config_id = frozen_config.id
+                self.config_id = frozen_config.config_id
                 self.whisker_task = SerialOrderTask(self.dbsettings,
-                                                    frozen_config.id)
+                                                    frozen_config.config_id)
+                self.whisker_task.task_started_sig.connect(self.task_started)
+                self.whisker_task.task_finished_sig.connect(self.task_finished)
                 self.whisker_owner = WhiskerOwner(
                     self.whisker_task, frozen_config.server,
                     main_port=frozen_config.port, parent=self)
@@ -344,7 +356,9 @@ class MainWindow(QMainWindow):
             return
         self.report_selected_config()
         self.whisker_task.task_status_sig.connect(self.report)
-        self.whisker_owner.finished.connect(self.task_finished)
+        self.whisker_owner.status_sent.connect(self.status)
+        self.whisker_owner.error_sent.connect(self.status)
+        self.whisker_owner.finished.connect(self.whisker_owner_finished)
         self.whisker_owner.start()
         self.set_button_states()
 
@@ -354,19 +368,35 @@ class MainWindow(QMainWindow):
             QMessageBox.about(self, "Can't stop",
                               "Nothing to stop: not running.")
             return
+        if self.task_running:
+            quit_msg = ("A TASK IS RUNNING! Are you <b>really</b> sure "
+                        "you want to stop?")
+            reply = QMessageBox.question(self, 'Really stop?',  quit_msg,
+                                         QMessageBox.Yes, QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                return
         self.status("Stopping...")
         if self.whisker_owner:
             self.whisker_owner.stop()
         self.set_button_states()
 
     @Slot()
-    def task_finished(self):
+    def whisker_owner_finished(self):
         self.status("Task finished")
         self.whisker_owner = None
         if self.exit_pending:
             QApplication.quit()
         self.report("Finished.")
         self.set_button_states()
+
+    @Slot()
+    def task_started(self):
+        self.task_running = True
+        self.status("Task now marked as BUSY.")
+
+    def task_finished(self):
+        self.task_running = False
+        self.status("Task now marked as NOT BUSY.")
 
     def anything_running(self):
         """Returns a bool."""
@@ -438,9 +468,8 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def help(self):
-        # launch_external_file(MANUAL_FILENAME)
-        # self.status("Launched {}".format(MANUAL_FILENAME))
-        QMessageBox.about(self, WINDOW_TITLE, "*** to do ***")
+        launch_external_file(MANUAL_FILENAME)
+        self.status("Launched {}".format(MANUAL_FILENAME))
 
 
 # =============================================================================
@@ -550,7 +579,7 @@ class ConfigPicker(TransactionalDialog):
         obj = self.ed_tv.get_selected_object()
         if obj is None:
             return
-        return obj.id
+        return obj.config_id
 
     def set_ed_button_states(self):
         selected = self.ed_tv.is_selected()
@@ -623,8 +652,7 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
             placeholderText="e.g. 250")
         self.iti_edit = QLineEdit(placeholderText="e.g. 2000")
         self.repeat_incomplete_check = QCheckBox()
-        # self.stages_lv = ModalEditListView(session, StageConfigDialog,
-        #                                    readonly=readonly)
+        self.session_time_limit_edit = QLineEdit(placeholderText="e.g. 60")
         self.stages_lv = GenericAttrTableView(
             session=self.session,
             modal_dialog_class=StageConfigDialog,
@@ -665,6 +693,12 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
                           self.repeat_incomplete_check)
         trial_group.setLayout(trial_form)
 
+        overall_limits_group = StyledQGroupBox('Overall limits')
+        overall_limits_form = QFormLayout()
+        overall_limits_form.addRow("Overall session time limit (min)",
+                                   self.session_time_limit_edit)
+        overall_limits_group.setLayout(overall_limits_form)
+
         stages_group = StyledQGroupBox('Stages')
         stages_layout_1 = QHBoxLayout()
         stages_layout_2 = QVBoxLayout()
@@ -695,6 +729,7 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         main_layout.addWidget(subject_group)
         main_layout.addWidget(reinf_group)
         main_layout.addWidget(trial_group)
+        main_layout.addWidget(overall_limits_group)
         main_layout.addWidget(stages_group)
 
         # Shared code
@@ -712,7 +747,7 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         self.stages_down_button.setEnabled(selected)
 
     def add_stage(self):
-        config = ConfigStage(config_id=self.obj.id,
+        config = ConfigStage(config_id=self.obj.config_id,
                              stagenum=self.obj.get_n_stages() + 1)
         self.stages_lv.add_in_nested_transaction(config)
         self.renumber_refresh()
@@ -750,6 +785,8 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         self.iti_edit.setText(str(obj.iti_duration_ms or ''))
         self.repeat_incomplete_check.setChecked(
             obj.repeat_incomplete_trials or False)
+        self.session_time_limit_edit.setText(str(
+            obj.session_time_limit_min or ''))
 
         stages_lm = ConfigStageTableModel(obj.stages, self.session)
         self.stages_lv.setModel(stages_lm)
@@ -808,6 +845,13 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         obj.repeat_incomplete_trials = self.repeat_incomplete_check.isChecked()
 
         try:
+            obj.session_time_limit_min = float(
+                self.session_time_limit_edit.text())
+            assert obj.session_time_limit_min > 0
+        except:
+            raise ValidationError("Invalid session time limit (must be >0)")
+
+        try:
             assert obj.has_stages()
         except:
             raise ValidationError("No stages specified")
@@ -827,6 +871,7 @@ class StageConfigDialog(QDialog, TransactionalEditDialogMixin):
         self.setWindowTitle("Configure stage")
 
         self.seqlen_edit = QLineEdit(placeholderText="range 2-5")
+        self.limhold_edit = QLineEdit(placeholderText="must be >0")
         self.progress_x_edit = QLineEdit(placeholderText="specify X")
         self.progress_y_edit = QLineEdit(placeholderText="specify Y")
         self.stop_n_edit = QLineEdit(placeholderText="specify N")
@@ -835,6 +880,11 @@ class StageConfigDialog(QDialog, TransactionalEditDialogMixin):
         sequence_form = QFormLayout()
         sequence_form.addRow("Sequence length", self.seqlen_edit)
         sequence_group.setLayout(sequence_form)
+
+        limhold_group = StyledQGroupBox('Limited hold')
+        limhold_form = QFormLayout()
+        limhold_form.addRow("Limited hold (s)", self.limhold_edit)
+        limhold_group.setLayout(limhold_form)
 
         progression_group = StyledQGroupBox('Progression/termination')
         progression_form = QFormLayout()
@@ -846,6 +896,7 @@ class StageConfigDialog(QDialog, TransactionalEditDialogMixin):
 
         main_layout = QVBoxLayout()
         main_layout.addWidget(sequence_group)
+        main_layout.addWidget(limhold_group)
         main_layout.addWidget(progression_group)
 
         # Shared code
@@ -854,6 +905,7 @@ class StageConfigDialog(QDialog, TransactionalEditDialogMixin):
 
     def object_to_dialog(self, obj):
         self.seqlen_edit.setText(str(obj.sequence_length or ''))
+        self.limhold_edit.setText(str(obj.limited_hold_s or ''))
         self.progress_x_edit.setText(str(obj.progression_criterion_x or ''))
         self.progress_y_edit.setText(str(obj.progression_criterion_y or ''))
         self.stop_n_edit.setText(str(obj.stop_after_n_trials or ''))
@@ -864,6 +916,11 @@ class StageConfigDialog(QDialog, TransactionalEditDialogMixin):
             assert 2 <= obj.sequence_length <= N_HOLES
         except:
             raise ValidationError("Invalid sequence length")
+        try:
+            obj.limited_hold_s = float(self.limhold_edit.text())
+            assert obj.limited_hold_s > 0
+        except:
+            raise ValidationError("Invalid limited hold")
         try:
             obj.progression_criterion_x = int(self.progress_x_edit.text())
             assert obj.progression_criterion_x >= 1

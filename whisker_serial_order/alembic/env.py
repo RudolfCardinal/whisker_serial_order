@@ -23,6 +23,13 @@ def run_migrations_offline():
     script output.
 
     """
+    # http://alembic.readthedocs.org/en/latest/cookbook.html
+    def process_revision_directives(context, revision, directives):
+        if config.cmd_opts.autogenerate:
+            script = directives[0]
+            if script.upgrade_ops.is_empty():
+                directives[:] = []
+
     url = config.get_main_option("sqlalchemy.url")
     # RNC
     context.configure(
@@ -31,6 +38,7 @@ def run_migrations_offline():
         render_as_batch=True,  # for SQLite mode; http://stackoverflow.com/questions/30378233  # noqa
         literal_binds=True,
         compare_type=True,
+        process_revision_directives=process_revision_directives,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -48,6 +56,13 @@ def run_migrations_online():
         prefix='sqlalchemy.',
         poolclass=pool.NullPool)
 
+    # http://alembic.readthedocs.org/en/latest/cookbook.html
+    def process_revision_directives(context, revision, directives):
+        if config.cmd_opts.autogenerate:
+            script = directives[0]
+            if script.upgrade_ops.is_empty():
+                directives[:] = []
+
     with connectable.connect() as connection:
         # RNC
         context.configure(
@@ -55,6 +70,7 @@ def run_migrations_online():
             target_metadata=target_metadata,
             render_as_batch=True,  # for SQLite mode; http://stackoverflow.com/questions/30378233  # noqa
             compare_type=True,
+            process_revision_directives=process_revision_directives,
         )
         with context.begin_transaction():
             context.run_migrations()

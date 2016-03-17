@@ -3,6 +3,7 @@
 
 import os
 import string
+import sys
 
 from attrdict import AttrDict
 
@@ -53,27 +54,34 @@ Serial order task for Whisker (<a href="{WHISKER_URL}">{WHISKER_URL}</a>).<br>
 
 You will also need:
 <ul>
-  <li>A database. Any backend supported by SQLAlchemy will do (see
-    <a href="{BACKEND_URL}">{BACKEND_URL}</a>).
-    SQLite is quick. This task finds its database using the environment
-    variable {DB_URL_ENV_VAR}.</li>
-  <li>You may want a graphical tool for database management. There are lots.
-    For SQLite, consider Sqliteman
-    (<a href="{SQLITEMAN_URL}">{SQLITEMAN_URL}</a>).
+  <li>A database; see the manual for details. This task finds its database
+  using either a command-line parameter or the environment variable
+  {DB_URL_ENV_VAR}.</li>
+  <li>Whisker.</li>
+  <li>Suitable operant hardware, for real use.</li>
 </ul>
 
 By Rudolf Cardinal (rudolf@pobox.com).<br>
 Copyright &copy; 2016 Rudolf Cardinal.
 For licensing details see LICENSE.txt.
 """.format(
-    BACKEND_URL="http://docs.sqlalchemy.org/en/latest/core/engines.html",
     DB_URL_ENV_VAR=DB_URL_ENV_VAR,
-    SQLITEMAN_URL="http://sqliteman.yarpen.cz/",
     VERSION=VERSION,
     WHISKER_URL="http://www.whiskercontrol.com/",
 )
 
 DATETIME_FORMAT_PRETTY = "%Y-%m-%d %H:%M:%S"
+
+# Where's the manual?
+if getattr(sys, 'frozen', False):
+    # Running inside a PyInstaller bundle.
+    # http://pythonhosted.org/PyInstaller/#run-time-operation
+    CURRENT_DIR = sys._MEIPASS
+else:
+    # Running in a normal Python environment.
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+MANUAL_FILENAME = os.path.join(CURRENT_DIR, 'MANUAL.odt')
+
 
 # =============================================================================
 # Whisker devices (DI = digital in; DO = digital out)
@@ -88,7 +96,7 @@ DEV_DI = AttrDict({  # Digital inputs
     'MAGSENSOR': 'REARPANEL',
 })
 for h in ALL_HOLE_NUMS:
-    DEV_DI["HOLE_{}".format(h)] = "HOLE_{}".format(h - 1)
+    DEV_DI["HOLE_{}".format(h)] = "SO_HOLE_{}".format(h)
 
 DEV_DO = AttrDict({
     'HOUSELIGHT': 'HOUSELIGHT',
@@ -96,7 +104,7 @@ DEV_DO = AttrDict({
     'MAGLIGHT': 'TRAYLIGHT',
 })
 for h in ALL_HOLE_NUMS:
-    DEV_DO["STIMLIGHT_{}".format(h)] = "STIMLIGHT_{}".format(h - 1)
+    DEV_DO["STIMLIGHT_{}".format(h)] = "SO_STIMLIGHT_{}".format(h)
 
 # =============================================================================
 # Events
@@ -111,6 +119,10 @@ WEV = AttrDict({  # Whisker events (Whisker -> task)
     'RESPONSE_5': 'response_hole_5',
     'REINF_END': 'reinf_end',
     'ITI_END': 'iti_end',
+    'TIMEOUT_NO_RESPONSE_TO_LIGHT': 'timeout_no_response_to_light',
+    'TIMEOUT_NO_RESPONSE_TO_MAG': 'timeout_no_response_to_mag',
+    'TIMEOUT_NO_RESPONSE_TO_CHOICE': 'timeout_no_response_to_choice',
+    'SESSION_TIME_OVER': 'session_time_over',
 })
 
 TEV = AttrDict({  # Task events

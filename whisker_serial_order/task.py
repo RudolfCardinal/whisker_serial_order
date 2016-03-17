@@ -8,12 +8,14 @@ log = logging.getLogger(__name__)
 
 import arrow
 from PySide.QtCore import Signal
-from whisker.constants import (
+from whisker.api import (
     CMD_CLAIM_GROUP,
     CMD_LINE_CLAIM,
     CMD_REPORT_NAME,
     FLAG_INPUT,
     FLAG_OUTPUT,
+    min_to_ms,
+    s_to_ms,
 )
 from whisker.exceptions import WhiskerCommandFailed
 from whisker.qtclient import WhiskerTask
@@ -28,6 +30,7 @@ from .constants import (
     TEV,
     WEV,
 )
+# from .extra import latency_s
 from .models import (
     Config,
     Session,
@@ -50,8 +53,9 @@ class TaskState(Enum):
     awaiting_foodmag_after_light = 3
     presenting_choice = 4
     reinforcing = 5
-    iti = 6
-    finished = 7
+    awaiting_food_collection = 6
+    iti = 7
+    finished = 8
 
 
 # =============================================================================
@@ -80,6 +84,8 @@ def get_response_hole_from_event(ev):
 
 class SerialOrderTask(WhiskerTask):
     task_status_sig = Signal(str)
+    task_started_sig = Signal()
+    task_finished_sig = Signal()
 
     # -------------------------------------------------------------------------
     # Creation, thread startup, shutdown.
@@ -98,10 +104,12 @@ class SerialOrderTask(WhiskerTask):
         self.stage = None  # current stage config
         self.eventnum_in_session = 0
         self.eventnum_in_trial = 0
-        self.stagenum = None
+        self.stagenum = None  # ONE-based
         self.state = TaskState.not_started
         self.trialplans = []
         self.current_sequence = []
+        self.timeouts = []
+        self.session_time_expired = False
 
     def thread_started(self):
         log.debug("thread_started")
@@ -118,14 +126,26 @@ class SerialOrderTask(WhiskerTask):
     # Shortcuts
     # -------------------------------------------------------------------------
 
-    def cmd(self, *args):
-        self.whisker.command_exc(*args)
+    def cmd(self, *args, **kwargs):
+        self.whisker.command_exc(*args, **kwargs)
 
-    def timer(self, *args):
-        self.whisker.timer_set_event(*args)
+    def timer(self, *args, **kwargs):
+        self.whisker.timer_set_event(*args, **kwargs)
 
     def cancel_timer(self, event):
         self.whisker.timer_clear_event(event)
+
+    def add_timeout(self, event, duration_ms):
+        self.timer(event, duration_ms)
+        self.timeouts.append(event)
+
+    def set_limhold(self, event):
+        self.add_timeout(event, s_to_ms(self.stage.limited_hold_s))
+
+    def cancel_timeouts(self):
+        for event in self.timeouts:
+            self.cancel_timer(event)
+        self.timeouts = []
 
     def report(self, msg):
         self.task_status_sig.emit(msg)
@@ -136,7 +156,7 @@ class SerialOrderTask(WhiskerTask):
             timestamp = arrow.now()
         self.eventnum_in_session += 1
         if self.trial:
-            trial_id = self.trial.id
+            trial_id = self.trial.trial_id
             trialnum = self.trial.trialnum
             self.eventnum_in_trial += 1
             eventnum_in_trial = self.eventnum_in_trial
@@ -163,7 +183,7 @@ class SerialOrderTask(WhiskerTask):
             trialnum = 1  # first trial
         self.trial = Trial(trialnum=trialnum,
                            started_at=arrow.now(),
-                           stage_id=self.stage.id,
+                           config_stage_id=self.stage.config_stage_id,
                            stagenum=self.stage.stagenum)
         trialplan = self.get_trial_plan(self.stage.sequence_length)
         self.trial.set_sequence(trialplan.sequence)
@@ -184,10 +204,10 @@ class SerialOrderTask(WhiskerTask):
         self.whisker.command(CMD_REPORT_NAME, "SerialOrder", VERSION)
         try:
             self.claim()
+            self.start_task()
         except WhiskerCommandFailed as e:
-            log.critical(
+            self.critical(
                 "Command failed: {}".format(e.args[0] if e.args else '?'))
-        self.start_task()
 
     def claim(self):
         self.info("Claiming devices...")
@@ -199,6 +219,7 @@ class SerialOrderTask(WhiskerTask):
         self.info("... devices successfully claimed")
 
     def start_task(self):
+        self.task_started_sig.emit()
         self.tasksession = Session(config_id=self.config_id,
                                    started_at=arrow.now())
         self.dbsession.add(self.tasksession)
@@ -207,6 +228,8 @@ class SerialOrderTask(WhiskerTask):
             self.whisker.line_set_event(DEV_DI.get('HOLE_{}'.format(h)),
                                         WEV.get('RESPONSE_{}'.format(h)))
         self.record_event(TEV.SESSION_START)
+        self.timer(WEV.SESSION_TIME_OVER,
+                   min_to_ms(self.config.session_time_limit_min))
         self.info("Started.")
         self.progress_to_next_stage(first=True)
         self.dbsession.commit()
@@ -225,7 +248,7 @@ class SerialOrderTask(WhiskerTask):
         self.state = TaskState.awaiting_initiation
         self.report("Awaiting initiation at food magazine")
 
-    @exit_on_exception  # @Slot(str, datetime.datetime, int)
+    @exit_on_exception  # @Slot(str, arrow.Arrow, int)
     def on_event(self, event, timestamp, whisker_timestamp_ms):
         log.info("SerialOrderTask: on_event: {}".format(event))
         self.record_event(event, timestamp, whisker_timestamp_ms,
@@ -238,37 +261,55 @@ class SerialOrderTask(WhiskerTask):
         if event == WEV.ITI_END and self.state == TaskState.iti:
             return self.decide_re_next_trial()
         if event == WEV.REINF_END and self.state == TaskState.reinforcing:
-            return self.start_iti()
+            return self.reinforcement_delivery_finished()
+        if (event == WEV.TIMEOUT_NO_RESPONSE_TO_LIGHT
+                and self.state == TaskState.presenting_light):
+            return self.start_iti(timestamp)
+        if (event == WEV.TIMEOUT_NO_RESPONSE_TO_MAG
+                and self.state == TaskState.awaiting_foodmag_after_light):
+            return self.start_iti(timestamp)
+        if (event == WEV.TIMEOUT_NO_RESPONSE_TO_CHOICE
+                and self.state == TaskState.presenting_choice):
+            return self.start_iti(timestamp)
+        if event == WEV.SESSION_TIME_OVER:
+            self.info("Session time expired.")
+            self.session_time_expired = True
+            return
 
         # Responses
         if event == WEV.MAGPOKE:
             if self.state == TaskState.awaiting_initiation:
-                return self.show_next_light()
+                self.trial.record_initiation(timestamp)
+                return self.show_next_light(timestamp)
             elif self.state == TaskState.awaiting_foodmag_after_light:
-                return self.show_next_light()
+                self.cancel_timeouts()
+                return self.mag_responded_show_next_light(timestamp)
+            if (self.state == TaskState.reinforcing
+                    or self.state == TaskState.awaiting_food_collection):
+                return self.reinforcement_collected(timestamp)
             else:
                 return
-
-        # *** turn on maglight at reinforcement, and off on collection
 
         holenum = get_response_hole_from_event(event)
         if holenum is not None:
             # response to a hole
             if self.state == TaskState.presenting_light:
+                self.cancel_timeouts()
                 assert self.current_sequence
                 if holenum == self.current_sequence[0]:
                     # correct hole
-                    return self.require_next_mag()
+                    return self.seq_responded_require_next_mag(timestamp)
                 else:
                     # wrong hole
-                    return self.start_iti()
+                    return self.start_iti(timestamp)
             elif self.state == TaskState.presenting_choice:
+                self.cancel_timeouts()
                 if holenum in self.trial.choice_holes:
                     # Responded to one of the choices
                     return self.choice_made(holenum, timestamp)
                 else:
                     # Reponded elsewhere
-                    return self.start_iti()
+                    return self.start_iti(timestamp)
             elif self.state in [TaskState.awaiting_initiation,
                                 TaskState.awaiting_foodmag_after_light]:
                 self.trials.n_premature += 1
@@ -277,33 +318,42 @@ class SerialOrderTask(WhiskerTask):
 
         log.warn("Unknown event received: {}".format(event))
 
-    def show_next_light(self):
+    def show_next_light(self, timestamp):
         if not self.current_sequence:
-            return self.offer_choice()
-        self.trial.sequence_n_offered += 1
+            return self.offer_choice(timestamp)
         holenum = self.current_sequence[0]
+        self.trial.record_sequence_hole_lit(timestamp, holenum)
         self.record_event(TEV.get('PRESENT_LIGHT_{}'.format(holenum)))
         self.whisker.line_off(DEV_DO.MAGLIGHT)
         self.whisker.line_on(get_stimlight_line(holenum))
+        self.set_limhold(WEV.TIMEOUT_NO_RESPONSE_TO_LIGHT)
         self.state = TaskState.presenting_light
         self.report("Presenting light {} (from sequence {})".format(
             holenum,
             self.trial.get_sequence_holes_as_str(),
         ))
 
-    def require_next_mag(self):
+    def seq_responded_require_next_mag(self, timestamp):
+        self.trial.record_sequence_hole_response(timestamp)
         self.record_event(TEV.REQUIRE_MAGPOKE)
+        self.trial.record_sequence_mag_lit(timestamp)
         self.set_all_hole_lights_off()
         self.whisker.line_on(DEV_DO.MAGLIGHT)
         self.current_sequence.pop(0)
+        self.set_limhold(WEV.TIMEOUT_NO_RESPONSE_TO_MAG)
         self.state = TaskState.awaiting_foodmag_after_light
         self.report("Awaiting magazine response after response to light")
 
-    def offer_choice(self):
+    def mag_responded_show_next_light(self, timestamp):
+        self.trial.record_sequence_mag_response(timestamp)
+        self.show_next_light(timestamp)
+
+    def offer_choice(self, timestamp):
         self.record_event(TEV.PRESENT_CHOICE)
-        self.trial.choice_offered = True
+        self.trial.record_choice_offered(timestamp)
         for holenum in self.trial.choice_holes:
             self.whisker.line_on(get_stimlight_line(holenum))
+        self.set_limhold(WEV.TIMEOUT_NO_RESPONSE_TO_CHOICE)
         self.state = TaskState.presenting_choice
         self.report("Presenting choice {} (after sequence {})".format(
             self.trial.get_choice_holes_as_str(),
@@ -315,12 +365,14 @@ class SerialOrderTask(WhiskerTask):
         correct = self.trial.record_response(response_hole, timestamp)
         if correct:
             self.tasksession.trials_correct += 1
-            self.reinforce()
+            self.reinforce(timestamp)
         else:
-            self.start_iti()
+            self.start_iti(timestamp)
 
-    def reinforce(self):
+    def reinforce(self, timestamp):
         self.record_event(TEV.REINFORCE)
+        self.trial.record_reinforcement(timestamp)
+        self.whisker.line_on(DEV_DO.MAGLIGHT)
         duration_ms = self.whisker.flash_line_pulses(
             DEV_DO.PELLET,
             count=self.config.reinf_n_pellets,
@@ -331,8 +383,22 @@ class SerialOrderTask(WhiskerTask):
         self.state = TaskState.reinforcing
         self.report("Reinforcing")
 
-    def start_iti(self):
+    def reinforcement_delivery_finished(self, timestamp):
+        if ***:
+            self.state = TaskState.awaiting_food_collection
+        else:
+            self.start_iti(timestamp)
+
+    def reinforcement_collected(self, timestamp):
+        self.trial.record_reinf_collection(timestamp)
+        if ***:
+            # *** if in "delivering reinf" state, await finish
+        else:
+            self.start_iti(timestamp)
+
+    def start_iti(self, timestamp):
         self.record_event(TEV.ITI_START)
+        self.trial.record_iti_start(timestamp)
         self.whisker.line_off(DEV_DO.HOUSELIGHT)
         self.whisker.line_off(DEV_DO.MAGLIGHT)
         self.set_all_hole_lights_off()
@@ -352,7 +418,7 @@ class SerialOrderTask(WhiskerTask):
     def decide_re_next_trial(self):
         # Manual way:
         trials_this_stage = self.dbsession.query(Trial)\
-            .filter(Trial.session_id == self.tasksession.id)\
+            .filter(Trial.session_id == self.tasksession.session_id)\
             .filter(Trial.stagenum == self.stagenum)\
             .order_by(Trial.trialnum)\
             .all()
@@ -364,6 +430,11 @@ class SerialOrderTask(WhiskerTask):
         #     .filter(Trial.stagenum == self.stagenum)\
         #     .count()
 
+        # Have we run out of time? Then we will definitely stop.
+        if self.session_time_expired:
+            self.info("Session time expired/no trial in progress; finishing.")
+            return self.end_session()
+
         if len(trials_this_stage) >= self.stage.progression_criterion_y:
             # Maybe we've passed the stage.
             last_y_trials = trials_this_stage[
@@ -372,9 +443,10 @@ class SerialOrderTask(WhiskerTask):
                 x.response_correct if x.response_correct is not None else 0
                 for x in last_y_trials)
             if n_correct >= self.stage.progression_criterion_x:
+                self.info("Passed the stage.")
                 return self.progress_to_next_stage()
         if len(trials_this_stage) >= self.stage.stop_after_n_trials:
-            # We've reached the end without passing, so we stop.
+            self.info("We've reached the end without passing, so we stop.")
             return self.end_session()
         self.start_new_trial()
 
@@ -384,12 +456,14 @@ class SerialOrderTask(WhiskerTask):
             self.stagenum = 1
         else:
             self.stagenum += 1
-        if self.stagenum >= len(self.config.stages):
+        if self.stagenum > len(self.config.stages):
+            self.info("No more stages; finishing.")
             self.end_session()
         else:
             self.start_new_trial()
 
     def end_session(self):
+        self.info("Ending session")
         self.record_event(TEV.SESSION_END)
         self.whisker.timer_clear_all_events()
         self.whisker.clear_all_callbacks()
@@ -398,6 +472,7 @@ class SerialOrderTask(WhiskerTask):
             self.whisker.line_off(d)
         self.state = TaskState.finished
         self.report("Finished")
+        self.task_finished_sig.emit()
 
     # -------------------------------------------------------------------------
     # Device control functions
