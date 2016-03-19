@@ -80,7 +80,7 @@ if getattr(sys, 'frozen', False):
 else:
     # Running in a normal Python environment.
     CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-MANUAL_FILENAME = os.path.join(CURRENT_DIR, 'MANUAL.odt')
+MANUAL_FILENAME = os.path.join(CURRENT_DIR, 'MANUAL.pdf')
 
 
 # =============================================================================
@@ -122,6 +122,7 @@ WEV = AttrDict({  # Whisker events (Whisker -> task)
     'TIMEOUT_NO_RESPONSE_TO_LIGHT': 'timeout_no_response_to_light',
     'TIMEOUT_NO_RESPONSE_TO_MAG': 'timeout_no_response_to_mag',
     'TIMEOUT_NO_RESPONSE_TO_CHOICE': 'timeout_no_response_to_choice',
+    'TIMEOUT_FOOD_UNCOLLECTED': 'timeout_food_uncollected',
     'SESSION_TIME_OVER': 'session_time_over',
 })
 

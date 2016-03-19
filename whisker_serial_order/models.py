@@ -346,13 +346,24 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         self.response_correct = response_hole == self.choice_hole_earliest
         return self.response_correct
 
+    def record_premature(self, timestamp):
+        self.n_premature += 1
+
     def record_reinforcement(self, timestamp):
         self.reinforced_at = timestamp
 
     def record_reinf_collection(self, timestamp):
+        if self.was_reinf_collected():
+            return
         self.reinf_collected_at = timestamp
         self.reinf_collect_latency_s = latency_s(self.responded_at,
                                                  self.reinf_collected_at)
+
+    def was_reinforced(self):
+        return self.reinforced_at is not None
+
+    def was_reinf_collected(self):
+        return self.reinf_collected_at is not None
 
     def record_iti_start(self, timestamp):
         self.iti_started_at = timestamp

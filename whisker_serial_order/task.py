@@ -53,7 +53,7 @@ class TaskState(Enum):
     awaiting_foodmag_after_light = 3
     presenting_choice = 4
     reinforcing = 5
-    awaiting_food_collection = 6
+    awaiting_food_collection = 6  # keeps maglight on
     iti = 7
     finished = 8
 
@@ -192,6 +192,7 @@ class SerialOrderTask(WhiskerTask):
         self.eventnum_in_trial = 0
         self.current_sequence = list(trialplan.sequence)
         # ... make a copy, but also convert from tuple to list
+        self.dbsession.flush()  # sets the trial_id variable
 
     # -------------------------------------------------------------------------
     # Connection and startup
@@ -257,38 +258,54 @@ class SerialOrderTask(WhiskerTask):
         self.dbsession.commit()
 
     def event_processor(self, event, timestamp):
+        # ---------------------------------------------------------------------
         # Timers
-        if event == WEV.ITI_END and self.state == TaskState.iti:
-            return self.decide_re_next_trial()
-        if event == WEV.REINF_END and self.state == TaskState.reinforcing:
-            return self.reinforcement_delivery_finished()
-        if (event == WEV.TIMEOUT_NO_RESPONSE_TO_LIGHT
-                and self.state == TaskState.presenting_light):
-            return self.start_iti(timestamp)
-        if (event == WEV.TIMEOUT_NO_RESPONSE_TO_MAG
-                and self.state == TaskState.awaiting_foodmag_after_light):
-            return self.start_iti(timestamp)
-        if (event == WEV.TIMEOUT_NO_RESPONSE_TO_CHOICE
-                and self.state == TaskState.presenting_choice):
-            return self.start_iti(timestamp)
+        # ---------------------------------------------------------------------
+        if event == WEV.TIMEOUT_NO_RESPONSE_TO_LIGHT:
+            if self.state == TaskState.presenting_light:
+                self.start_iti(timestamp)
+            return
+        if event == WEV.TIMEOUT_NO_RESPONSE_TO_MAG:
+            if self.state == TaskState.awaiting_foodmag_after_light:
+                self.start_iti(timestamp)
+            return
+        if event == WEV.TIMEOUT_NO_RESPONSE_TO_CHOICE:
+            if self.state == TaskState.presenting_choice:
+                self.start_iti(timestamp)
+            return
+        if event == WEV.REINF_END:
+            if self.state == TaskState.reinforcing:
+                self.reinforcement_delivery_finished(timestamp)
+            return
+        if event == WEV.TIMEOUT_FOOD_UNCOLLECTED:
+            if self.state == TaskState.awaiting_food_collection:
+                self.start_iti(timestamp)
+            return
+        if event == WEV.ITI_END:
+            if self.state == TaskState.iti:
+                self.decide_re_next_trial()
+            return
         if event == WEV.SESSION_TIME_OVER:
             self.info("Session time expired.")
             self.session_time_expired = True
             return
 
+        # ---------------------------------------------------------------------
         # Responses
+        # ---------------------------------------------------------------------
         if event == WEV.MAGPOKE:
             if self.state == TaskState.awaiting_initiation:
                 self.trial.record_initiation(timestamp)
-                return self.show_next_light(timestamp)
+                self.show_next_light(timestamp)
             elif self.state == TaskState.awaiting_foodmag_after_light:
                 self.cancel_timeouts()
-                return self.mag_responded_show_next_light(timestamp)
-            if (self.state == TaskState.reinforcing
-                    or self.state == TaskState.awaiting_food_collection):
-                return self.reinforcement_collected(timestamp)
-            else:
-                return
+                self.mag_responded_show_next_light(timestamp)
+            elif (self.state == TaskState.reinforcing
+                    or self.state == TaskState.awaiting_food_collection
+                    or (self.state == TaskState.iti
+                        and self.trial.was_reinforced())):
+                self.reinforcement_collected(timestamp)
+            return
 
         holenum = get_response_hole_from_event(event)
         if holenum is not None:
@@ -312,9 +329,8 @@ class SerialOrderTask(WhiskerTask):
                     return self.start_iti(timestamp)
             elif self.state in [TaskState.awaiting_initiation,
                                 TaskState.awaiting_foodmag_after_light]:
-                self.trials.n_premature += 1
-            else:
-                return
+                self.trial.record_premature(timestamp)
+            return
 
         log.warn("Unknown event received: {}".format(event))
 
@@ -351,6 +367,7 @@ class SerialOrderTask(WhiskerTask):
     def offer_choice(self, timestamp):
         self.record_event(TEV.PRESENT_CHOICE)
         self.trial.record_choice_offered(timestamp)
+        self.whisker.line_off(DEV_DO.MAGLIGHT)
         for holenum in self.trial.choice_holes:
             self.whisker.line_on(get_stimlight_line(holenum))
         self.set_limhold(WEV.TIMEOUT_NO_RESPONSE_TO_CHOICE)
@@ -372,6 +389,7 @@ class SerialOrderTask(WhiskerTask):
     def reinforce(self, timestamp):
         self.record_event(TEV.REINFORCE)
         self.trial.record_reinforcement(timestamp)
+        self.set_all_hole_lights_off()
         self.whisker.line_on(DEV_DO.MAGLIGHT)
         duration_ms = self.whisker.flash_line_pulses(
             DEV_DO.PELLET,
@@ -384,17 +402,22 @@ class SerialOrderTask(WhiskerTask):
         self.report("Reinforcing")
 
     def reinforcement_delivery_finished(self, timestamp):
-        if ***:
-            self.state = TaskState.awaiting_food_collection
-        else:
+        if self.trial.was_reinf_collected():
             self.start_iti(timestamp)
+        else:
+            self.state = TaskState.awaiting_food_collection
+            self.set_limhold(WEV.TIMEOUT_FOOD_UNCOLLECTED)
+            self.report("Awaiting food collection")
 
     def reinforcement_collected(self, timestamp):
+        if self.trial.was_reinf_collected():
+            return
         self.trial.record_reinf_collection(timestamp)
-        if ***:
-            # *** if in "delivering reinf" state, await finish
-        else:
+        if self.state == TaskState.reinforcing:
+            self.whisker.line_off(DEV_DO.MAGLIGHT)
+        elif self.state == TaskState.awaiting_food_collection:
             self.start_iti(timestamp)
+        # ... but if it's iti already, then do nothing
 
     def start_iti(self, timestamp):
         self.record_event(TEV.ITI_START)
@@ -405,6 +428,7 @@ class SerialOrderTask(WhiskerTask):
         self.timer(WEV.ITI_END, self.config.iti_duration_ms)
         self.state = TaskState.iti
         self.report("ITI")
+        log.info("Starting ITI")
 
     def iti_finished_end_trial(self):
         self.record_event(TEV.TRIAL_END)
