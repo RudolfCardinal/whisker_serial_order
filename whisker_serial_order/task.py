@@ -189,6 +189,7 @@ class SerialOrderTask(WhiskerTask):
                          whisker_timestamp_ms=whisker_timestamp_ms,
                          from_server=from_server)
         self.tasksession.events.append(eventobj)
+        log.info(event)
 
     def create_new_trial(self):
         assert self.stagenum is not None
@@ -267,7 +268,7 @@ class SerialOrderTask(WhiskerTask):
 
     @exit_on_exception  # @Slot(str, arrow.Arrow, int)
     def on_event(self, event, timestamp, whisker_timestamp_ms):
-        log.info("SerialOrderTask: on_event: {}".format(event))
+        # log.info("SerialOrderTask: on_event: {}".format(event))
         self.record_event(event, timestamp, whisker_timestamp_ms,
                           from_server=True)
         self.event_processor(event, timestamp)
@@ -299,7 +300,7 @@ class SerialOrderTask(WhiskerTask):
             return
         if event == WEV.ITI_END:
             if self.state == TaskState.iti:
-                self.decide_re_next_trial()
+                self.iti_finished_end_trial()
             return
         if event == WEV.SESSION_TIME_OVER:
             self.info("Session time expired.")
@@ -450,6 +451,7 @@ class SerialOrderTask(WhiskerTask):
         self.record_event(TEV.TRIAL_END)
         if self.trial.responded or not self.config.repeat_incomplete_trials:
             if self.trialplans:
+                log.info("Advancing to next trial plan")
                 self.trialplans.pop(0)
             else:
                 log.warning("Bug? No trial plan to remove.")
