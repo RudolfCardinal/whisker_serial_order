@@ -4,7 +4,8 @@
 from enum import Enum, unique
 import itertools
 import logging
-log = logging.getLogger(__name__)
+import os
+# import sys
 
 import arrow
 from PySide.QtCore import Signal
@@ -18,10 +19,17 @@ from whisker.api import (
     s_to_ms,
 )
 from whisker.exceptions import WhiskerCommandFailed
+from whisker.lang import writelines_nl
 from whisker.qtclient import WhiskerTask
 from whisker.qt import exit_on_exception
 from whisker.random import block_shuffle_by_attr, shuffle_where_equal_by_attr
-from whisker.sqlalchemy import get_database_session_thread_scope
+from whisker.sqlalchemy import (
+    dump_connection_info,
+    dump_orm_tree_as_insert_sql,
+    dump_ddl,
+    get_database_session_thread_scope,
+    sql_comment,
+)
 
 from .constants import (
     ALL_HOLE_NUMS,
@@ -32,13 +40,17 @@ from .constants import (
 )
 # from .extra import latency_s
 from .models import (
+    Base,
     Config,
     Session,
     Trial,
     Event,
     TrialPlan,
 )
+from .settings import get_output_directory
 from .version import VERSION
+
+log = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -110,6 +122,7 @@ class SerialOrderTask(WhiskerTask):
         self.current_sequence = []
         self.timeouts = []
         self.session_time_expired = False
+        self.file_written = False
 
     def thread_started(self):
         log.debug("thread_started")
@@ -117,10 +130,13 @@ class SerialOrderTask(WhiskerTask):
         # ... keep the session running, if we can; simpler
         self.config = self.dbsession.query(Config).get(self.config_id)
 
+    @exit_on_exception
     def stop(self):
+        self.save_to_file()
         self.dbsession.commit()
         self.dbsession.close()
         super().stop()
+        self.task_finished_sig.emit()
 
     # -------------------------------------------------------------------------
     # Shortcuts
@@ -300,10 +316,10 @@ class SerialOrderTask(WhiskerTask):
             elif self.state == TaskState.awaiting_foodmag_after_light:
                 self.cancel_timeouts()
                 self.mag_responded_show_next_light(timestamp)
-            elif (self.state == TaskState.reinforcing
-                    or self.state == TaskState.awaiting_food_collection
-                    or (self.state == TaskState.iti
-                        and self.trial.was_reinforced())):
+            elif (self.state == TaskState.reinforcing or
+                    self.state == TaskState.awaiting_food_collection or
+                    (self.state == TaskState.iti and
+                        self.trial.was_reinforced())):
                 self.reinforcement_collected(timestamp)
             return
 
@@ -495,8 +511,13 @@ class SerialOrderTask(WhiskerTask):
         for d in DEV_DO.values():
             self.whisker.line_off(d)
         self.state = TaskState.finished
+        self.save_to_file()
         self.report("Finished")
         self.task_finished_sig.emit()
+
+    def abort(self):
+        self.info("Aborting session")
+        self.save_to_file()
 
     # -------------------------------------------------------------------------
     # Device control functions
@@ -537,3 +558,39 @@ class SerialOrderTask(WhiskerTask):
         log.debug("plans: serial_order_choice: {}".format(
             [x.serial_order_choice for x in triallist]))
         return triallist
+
+    # -------------------------------------------------------------------------
+    # Text-based results save, as SQL
+    # -------------------------------------------------------------------------
+
+    def save_to_file(self):
+        if self.file_written:
+            return
+        filename = os.path.join(
+            get_output_directory(),
+            "wso_{dt}_{subj}.sql".format(
+                dt=self.tasksession.started_at.format("YYYY-MM-DDTHHmmss"),
+                # ... avoid ':' for Windows filenames
+                subj=self.config.subject
+            )
+        )
+        self.tasksession.filename = filename
+        self.dbsession.commit()
+        self.info("Writing data to: {}".format(filename))
+        with open(filename, 'w') as fileobj:
+            self.save_to_sql(fileobj, filename)
+        self.file_written = True
+
+    def save_to_sql(self, fileobj, filename):
+        session = self.dbsession
+        engine = session.bind
+        writelines_nl(fileobj, [
+            sql_comment('whisker_serial_order data file'),
+            sql_comment('Filename: {}'.format(filename)),
+            sql_comment('Created at: {}'.format(arrow.now())),
+            sql_comment('=' * 76)
+        ])
+        dump_connection_info(engine, fileobj)
+        dump_ddl(Base.metadata, dialect_name=engine.dialect.name,
+                 fileobj=fileobj)
+        dump_orm_tree_as_insert_sql(engine, session, self.tasksession, fileobj)

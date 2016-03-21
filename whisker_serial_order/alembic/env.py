@@ -2,13 +2,14 @@
 # whisker_serial_order/alembic/env.py
 
 import logging
-log = logging.getLogger(__name__)
 from whisker.logging import configure_logger_for_colour
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from whisker_serial_order.models import Base
 from whisker_serial_order.settings import dbsettings
+
+log = logging.getLogger(__name__)
 
 
 def run_migrations_offline():

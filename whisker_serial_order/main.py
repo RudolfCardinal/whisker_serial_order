@@ -26,7 +26,7 @@ Serial order task for Whisker.
 
 import argparse
 import logging
-log = logging.getLogger(__name__)
+import os
 import random
 import subprocess
 import sys
@@ -53,6 +53,7 @@ from .constants import (
     ALEMBIC_CONFIG_FILENAME,
     DB_URL_ENV_VAR,
     MSG_DB_ENV_VAR_NOT_SPECIFIED,
+    OUTPUT_DIR_ENV_VAR,
     WRONG_DATABASE_VERSION_STUB,
 )
 from .gui import (
@@ -61,8 +62,15 @@ from .gui import (
     WrongDatabaseVersionWindow,
 )
 import whisker_serial_order.models as models
-from .settings import dbsettings, set_database_url
+from .settings import (
+    dbsettings,
+    get_output_directory,
+    set_database_url,
+    set_output_directory,
+)
 from .version import VERSION
+
+log = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -88,6 +96,11 @@ def main():
         "--dburl", default=None,
         help="Database URL (if not specified, task will look in {} "
         "environment variable).".format(DB_URL_ENV_VAR))
+    parser.add_argument(
+        "--outdir", default=None,
+        help="Directory for output file (if not specified, task will look in "
+        "{} environment variable, or if none, working directory).".format(
+            OUTPUT_DIR_ENV_VAR))
     parser.add_argument('--gui', '-g', action="store_true",
                         help="GUI mode only")
     parser.add_argument('--schema', action="store_true",
@@ -164,6 +177,15 @@ def main():
     # Create QApplication before we create any windows (or Qt will crash)
     # -------------------------------------------------------------------------
     qt_app = QApplication(qt_args)
+
+    # -------------------------------------------------------------------------
+    # File output
+    # -------------------------------------------------------------------------
+    if args.outdir:
+        set_output_directory(args.outdir)
+    log.info("Using output directory: {}".format(get_output_directory()))
+    if not os.access(get_output_directory(), os.W_OK):
+        raise ValueError("Cannot write to output directory")
 
     # -------------------------------------------------------------------------
     # Database

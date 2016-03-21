@@ -25,9 +25,9 @@ an SQLAlchemy database URL), or pass it as a command-line argument. Examples
 follow.
 
 Windows:
-    set {var}=sqlite:///C:\\path\\to\\database.sqlite3
+    set {var}=mysql://username:password@localhost/database
 Linux:
-    export {var}=sqlite:////absolute/path/to/database.sqlite3
+    export {var}=mysql://username:password@localhost/database
 {LINESEP}
 """.format(LINESEP=LINESEP, var=DB_URL_ENV_VAR)
 WRONG_DATABASE_VERSION_STUB = string.Template("""
@@ -42,6 +42,12 @@ Database revision should be {head_revision} but is {current_revision}.
   trying to use an old task version with a newer database).
 $LINESEP
 """).substitute(LINESEP=LINESEP)
+
+# =============================================================================
+# File stuff
+# =============================================================================
+
+OUTPUT_DIR_ENV_VAR = "WHISKER_SERIAL_ORDER_OUTDIR"
 
 # =============================================================================
 # About

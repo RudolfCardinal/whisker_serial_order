@@ -89,7 +89,8 @@ setup(
     install_requires=[
         'arrow',  # better datetime
         'mysqlclient',  # MySQL engine (Python 3 replacement for MySQLdb)
-        'psycopg2',  # PostgreSQL engine
+        # 'psycopg2',  # PostgreSQL engine; but requires PostgreSQL installed
+        # ... (fails with error re missing pg_config otherwise)
         'PySide==1.2.4',  # Python interface to Qt
         'SQLAlchemy',  # SQL Alchemy database interface
         'sqlalchemy-utils',  # http://sqlalchemy-utils.readthedocs.org/

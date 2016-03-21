@@ -2,7 +2,6 @@
 # whisker_serial_order/models.py
 
 import logging
-log = logging.getLogger(__name__)
 
 import arrow
 from sqlalchemy import (
@@ -14,7 +13,7 @@ from sqlalchemy import (
     Integer,
     MetaData,
     String,  # variable length in PostgreSQL; specify length for MySQL
-    # Text,  # variable length
+    Text,  # variable length
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -34,6 +33,9 @@ from .constants import (
     MAX_EVENT_LENGTH,
 )
 from .extra import latency_s
+
+log = logging.getLogger(__name__)
+
 
 # =============================================================================
 # Constants
@@ -93,6 +95,12 @@ class Config(SqlAlchemyAttrDictMixin, Base):
                          default=arrow.now, onupdate=arrow.now)
     read_only = Column(Boolean)  # used for a live task, therefore can't edit
     stages = relationship("ConfigStage", order_by="ConfigStage.stagenum")
+    # No explicit relationship to Session.
+    # This means that deepcopy() won't copy any non-config stuff, which is
+    # helpful, but means that we have to use the session as the starting point
+    # for the write-to-disk walk.
+    # If we wanted to improve this, the other way would be to extend the
+    # deepcopy() function to limit the classes it will traverse.
 
     # Whisker
     server = Column(String(MAX_GENERIC_STRING_LENGTH))
@@ -197,10 +205,12 @@ class Session(SqlAlchemyAttrDictMixin, Base):
     __tablename__ = 'session'
     session_id = Column(Integer, primary_key=True)
     config_id = Column(Integer, ForeignKey('config.config_id'), nullable=False)
+    config = relationship("Config")
     events = relationship("Event")
     trials = relationship("Trial")
 
     started_at = Column(ArrowMicrosecondType, nullable=False)
+    filename = Column(Text)
 
     trials_responded = Column(Integer, nullable=False, default=0)
     trials_correct = Column(Integer, nullable=False, default=0)

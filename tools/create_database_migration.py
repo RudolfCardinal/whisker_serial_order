@@ -5,11 +5,12 @@ import logging
 import os
 import subprocess
 import sys
-if sys.version_info[0] < 3:
-    raise AssertionError("Need Python 3")
 
 from whisker.logging import configure_logger_for_colour
 from whisker_serial_order.constants import DB_URL_ENV_VAR
+
+if sys.version_info[0] < 3:
+    raise AssertionError("Need Python 3")
 
 N_SEQUENCE_CHARS = 4  # like Django
 

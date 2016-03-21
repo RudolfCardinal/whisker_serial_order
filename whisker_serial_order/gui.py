@@ -2,8 +2,6 @@
 # whisker_serial_order/gui.py
 
 import logging
-log = logging.getLogger(__name__)
-log.addHandler(logging.NullHandler())
 import traceback
 
 from PySide.QtCore import Qt, Slot
@@ -54,6 +52,9 @@ from .constants import (
 )
 from .models import Config, ConfigStage
 from .task import SerialOrderTask
+
+log = logging.getLogger(__name__)
+
 
 # =============================================================================
 # Constants
@@ -146,6 +147,7 @@ class ConfigStageTableModel(GenericAttrTableModel):
     HEADINGS = [
         ("Stage#", "stagenum"),
         ("Seq.len.", "sequence_length"),
+        ("Lim.hold(s)", "limited_hold_s"),
         ("Progress X", "progression_criterion_x",),
         ("Progress Y", "progression_criterion_y"),
         ("Stop N", "stop_after_n_trials"),
@@ -400,8 +402,8 @@ class MainWindow(QMainWindow):
 
     def anything_running(self):
         """Returns a bool."""
-        return (self.whisker_owner is not None
-                and self.whisker_owner.is_running())
+        return (self.whisker_owner is not None and
+                self.whisker_owner.is_running())
 
     def set_button_states(self):
         running = self.anything_running()
@@ -409,8 +411,8 @@ class MainWindow(QMainWindow):
             'View configuration'
             if running and not self.db_is_sqlite else '&Configure')
         self.configure_button.setEnabled(not running or not self.db_is_sqlite)
-        self.start_button.setEnabled(not running
-                                     and self.config_id is not None)
+        self.start_button.setEnabled(not running and
+                                     self.config_id is not None)
         self.stop_button.setEnabled(running)
         self.ping_whisker_button.setEnabled(running)
 
@@ -660,7 +662,7 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
             readonly=readonly)
         self.stages_lv.selected_maydelete.connect(
             self.set_stages_button_states)
-        self.stages_lv.setMinimumWidth(400)
+        self.stages_lv.setMinimumWidth(500)
 
         # Layout/buttons
         whisker_group = StyledQGroupBox('Whisker')
@@ -931,6 +933,10 @@ class StageConfigDialog(QDialog, TransactionalEditDialogMixin):
             assert obj.progression_criterion_y >= 1
         except:
             raise ValidationError("Invalid Y")
+        try:
+            assert obj.progression_criterion_x <= obj.progression_criterion_y
+        except:
+            raise ValidationError("Must have: X <= Y")
         try:
             obj.stop_after_n_trials = int(self.stop_n_edit.text())
             assert obj.stop_after_n_trials >= 1
