@@ -58,11 +58,13 @@ def main():
     os.makedirs(DIST_DIR, exist_ok=True)
 
     title("Building new distribution...")
-    subprocess.check_call(
+    args = (
         ['pyinstaller', '--clean', '--log-level=INFO']
         + PYINSTALLER_EXTRA_OPTIONS
         + [SPECFILE]
     )
+    print(args)
+    subprocess.check_call(args)
 
     title("Zipping to {}...".format(ZIPFILEBASE))
     zipfile = shutil.make_archive(ZIPFILEBASE, ZIPFORMAT, DIST_SUBDIR)
