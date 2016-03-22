@@ -31,15 +31,14 @@ from whisker.sqlalchemy import (
     sql_comment,
 )
 
-from .constants import (
+from whisker_serial_order.constants import (
     ALL_HOLE_NUMS,
     DEV_DI,
     DEV_DO,
     TEV,
     WEV,
 )
-# from .extra import latency_s
-from .models import (
+from whisker_serial_order.models import (
     Base,
     Config,
     Session,
@@ -47,8 +46,8 @@ from .models import (
     Event,
     TrialPlan,
 )
-from .settings import get_output_directory
-from .version import VERSION
+from whisker_serial_order.settings import get_output_directory
+from whisker_serial_order.version import VERSION
 
 log = logging.getLogger(__name__)
 
@@ -568,6 +567,10 @@ class SerialOrderTask(WhiskerTask):
     def save_to_file(self):
         if self.file_written:
             return
+        if not self.tasksession:
+            self.info("No session yet; nothing to write to disk.")
+            return
+        dt = None
         filename = os.path.join(
             get_output_directory(),
             "wso_{dt}_{subj}.sql".format(
@@ -579,9 +582,13 @@ class SerialOrderTask(WhiskerTask):
         self.tasksession.filename = filename
         self.dbsession.commit()
         self.info("Writing data to: {}".format(filename))
-        with open(filename, 'w') as fileobj:
-            self.save_to_sql(fileobj, filename)
-        self.file_written = True
+        try:
+            with open(filename, 'w') as fileobj:
+                self.save_to_sql(fileobj, filename)
+            self.file_written = True
+        except Exception as e:
+            self.critical("Failed to write to {}; exception: {}".format(
+                filename, e))
 
     def save_to_sql(self, fileobj, filename):
         session = self.dbsession

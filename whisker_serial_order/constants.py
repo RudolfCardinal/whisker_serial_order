@@ -7,7 +7,7 @@ import sys
 
 from attrdict import AttrDict
 
-from .version import VERSION
+from whisker_serial_order.version import VERSION
 
 LINESEP = "=" * 79
 

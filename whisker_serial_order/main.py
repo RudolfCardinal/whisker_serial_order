@@ -48,7 +48,7 @@ from whisker.sqlalchemy import (
 )
 import whisker.version
 
-from .constants import (
+from whisker_serial_order.constants import (
     ALEMBIC_BASE_DIR,
     ALEMBIC_CONFIG_FILENAME,
     DB_URL_ENV_VAR,
@@ -56,19 +56,19 @@ from .constants import (
     OUTPUT_DIR_ENV_VAR,
     WRONG_DATABASE_VERSION_STUB,
 )
-from .gui import (
+from whisker_serial_order.gui import (
     MainWindow,
     NoDatabaseSpecifiedWindow,
     WrongDatabaseVersionWindow,
 )
 import whisker_serial_order.models as models
-from .settings import (
+from whisker_serial_order.settings import (
     dbsettings,
     get_output_directory,
     set_database_url,
     set_output_directory,
 )
-from .version import VERSION
+from whisker_serial_order.version import VERSION
 
 log = logging.getLogger(__name__)
 

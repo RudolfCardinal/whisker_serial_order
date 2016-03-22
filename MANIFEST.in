@@ -1,0 +1,8 @@
+# manifest used by setup.py for whisker_serial_order
+
+include LICENSE.txt
+include whisker_serial_order/alembic.ini
+include whisker_serial_order/alembic/env.py
+include whisker_serial_order/alembic/script.py.mako
+include whisker_serial_order/alembic/versions/*
+include whisker_serial_order/MANUAL.*

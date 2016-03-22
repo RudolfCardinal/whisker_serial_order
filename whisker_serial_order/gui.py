@@ -41,7 +41,7 @@ from whisker.sqlalchemy import (
     upgrade_database,
 )
 
-from .constants import (
+from whisker_serial_order.constants import (
     ABOUT,
     ALEMBIC_BASE_DIR,
     ALEMBIC_CONFIG_FILENAME,
@@ -50,8 +50,8 @@ from .constants import (
     MSG_DB_ENV_VAR_NOT_SPECIFIED,
     WRONG_DATABASE_VERSION_STUB,
 )
-from .models import Config, ConfigStage
-from .task import SerialOrderTask
+from whisker_serial_order.models import Config, ConfigStage
+from whisker_serial_order.task import SerialOrderTask
 
 log = logging.getLogger(__name__)
 

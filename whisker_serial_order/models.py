@@ -28,11 +28,12 @@ from whisker.sqlalchemy import (
     SqlAlchemyAttrDictMixin,
 )
 
-from .constants import (
+from whisker_serial_order.constants import (
     DATETIME_FORMAT_PRETTY,
     MAX_EVENT_LENGTH,
 )
-from .extra import latency_s
+from whisker_serial_order.extra import latency_s
+from whisker_serial_order.version import MAX_VERSION_LENGTH, VERSION
 
 log = logging.getLogger(__name__)
 
@@ -210,6 +211,7 @@ class Session(SqlAlchemyAttrDictMixin, Base):
     trials = relationship("Trial")
 
     started_at = Column(ArrowMicrosecondType, nullable=False)
+    software_version = Column(String(MAX_VERSION_LENGTH))
     filename = Column(Text)
 
     trials_responded = Column(Integer, nullable=False, default=0)
@@ -220,6 +222,7 @@ class Session(SqlAlchemyAttrDictMixin, Base):
         self.started_at = kwargs.pop('started_at')
         self.trials_responded = 0
         self.trials_correct = 0
+        self.software_version = VERSION
 
 
 # =============================================================================
