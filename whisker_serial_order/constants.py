@@ -15,7 +15,13 @@ LINESEP = "=" * 79
 # Database stuff
 # =============================================================================
 
-ALEMBIC_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    # Running inside a PyInstaller bundle.
+    # http://pythonhosted.org/PyInstaller/#run-time-operation
+    ALEMBIC_BASE_DIR = sys._MEIPASS
+else:
+    # Running in a normal Python environment.
+    ALEMBIC_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ALEMBIC_CONFIG_FILENAME = 'alembic.ini'
 DB_URL_ENV_VAR = "WHISKER_SERIAL_ORDER_DB_URL"
 MSG_DB_ENV_VAR_NOT_SPECIFIED = """

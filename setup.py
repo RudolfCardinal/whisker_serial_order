@@ -97,6 +97,7 @@ setup(
     },
 
     install_requires=[
+        'python-dateutil==2.5.1',  # fixed problem with PyInstaller for v2.5.0
         'arrow',  # better datetime
         # 'mysqlclient',  # MySQL engine (Python 3 replacement for MySQLdb)
         # ... but under Windows, a right pain to install; use

@@ -22,8 +22,10 @@ a = Analysis(
         ('whisker_serial_order/alembic/env.py', 'alembic'),
         ('whisker_serial_order/alembic/versions/*.py', 'alembic/versions'),
     ],
-    hiddenimports=[],
-    hookspath=['hooks'],
+    hiddenimports=[
+        'whisker.alembic',  # used by alembic/versions/*
+    ],
+    # hookspath=['hooks'],
     runtime_hooks=[],
     excludes=[],
     win_no_prefer_redirects=False,
