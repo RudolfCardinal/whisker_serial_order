@@ -53,7 +53,7 @@ def title(msg):
 def main():
     title("Deleting old distribution...")
     shutil.rmtree(BUILD_DIR, ignore_errors=True)
-    shutil.rmtree(DIST_DIR, ignore_errors=True)
+    shutil.rmtree(DIST_SUBDIR, ignore_errors=True)  # NOT DIST_DIR
     os.makedirs(BUILD_DIR, exist_ok=True)
     os.makedirs(DIST_DIR, exist_ok=True)
 
