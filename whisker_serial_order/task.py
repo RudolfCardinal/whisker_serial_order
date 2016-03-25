@@ -570,7 +570,6 @@ class SerialOrderTask(WhiskerTask):
         if not self.tasksession:
             self.info("No session yet; nothing to write to disk.")
             return
-        dt = None
         filename = os.path.join(
             get_output_directory(),
             "wso_{dt}_{subj}.sql".format(

@@ -4,7 +4,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 if sys.version_info[0] < 3:
     raise AssertionError("Need Python 3")
 

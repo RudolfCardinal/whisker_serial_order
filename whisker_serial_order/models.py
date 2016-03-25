@@ -152,7 +152,8 @@ class Config(SqlAlchemyAttrDictMixin, Base):
         return self.modified_at.strftime(DATETIME_FORMAT_PRETTY)
 
     def clone(self, session, read_only=False):
-        newconfig = deepcopy_sqla_object(self, session)  # will add to session
+        newconfig = deepcopy_sqla_object(self, session, flush=False)
+        # ... will add to session
         newconfig.read_only = read_only
         session.flush()  # but not necessarily commit
         return newconfig

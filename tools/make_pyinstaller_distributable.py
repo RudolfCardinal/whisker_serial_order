@@ -59,9 +59,9 @@ def main():
 
     title("Building new distribution...")
     args = (
-        ['pyinstaller', '--clean', '--log-level=INFO']
-        + PYINSTALLER_EXTRA_OPTIONS
-        + [SPECFILE]
+        ['pyinstaller', '--clean', '--log-level=INFO'] +
+        PYINSTALLER_EXTRA_OPTIONS +
+        [SPECFILE]
     )
     print(args)
     subprocess.check_call(args)

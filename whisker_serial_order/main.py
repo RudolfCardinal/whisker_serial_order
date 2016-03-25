@@ -65,6 +65,7 @@ import whisker_serial_order.models as models
 from whisker_serial_order.settings import (
     dbsettings,
     get_output_directory,
+    set_database_echo,
     set_database_url,
     set_output_directory,
 )
@@ -96,6 +97,8 @@ def main():
         "--dburl", default=None,
         help="Database URL (if not specified, task will look in {} "
         "environment variable).".format(DB_URL_ENV_VAR))
+    parser.add_argument('--dbecho', action="store_true",
+                        help="Echo SQL to log.")
     parser.add_argument(
         "--outdir", default=None,
         help="Directory for output file (if not specified, task will look in "
@@ -193,6 +196,8 @@ def main():
     # Get URL, or complain
     if args.dburl:
         set_database_url(args.dburl)
+    if args.dbecho:
+        set_database_echo(args.dbecho)
     if not dbsettings['url']:
         if args.gui:
             return run_gui(qt_app, NoDatabaseSpecifiedWindow())

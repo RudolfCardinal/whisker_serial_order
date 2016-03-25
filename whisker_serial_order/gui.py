@@ -271,7 +271,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """Trap exit."""
         quit_msg = "Are you sure you want to exit?"
-        reply = QMessageBox.question(self, 'Really exit?',  quit_msg,
+        reply = QMessageBox.question(self, 'Really exit?', quit_msg,
                                      QMessageBox.Yes, QMessageBox.No)
         if reply != QMessageBox.Yes:
             event.ignore()
@@ -280,7 +280,7 @@ class MainWindow(QMainWindow):
         if self.task_running:
             quit_msg = ("A TASK IS RUNNING! Are you <b>really</b> sure "
                         "you want to exit?")
-            reply = QMessageBox.question(self, 'Really exit?',  quit_msg,
+            reply = QMessageBox.question(self, 'Really exit?', quit_msg,
                                          QMessageBox.Yes, QMessageBox.No)
             if reply != QMessageBox.Yes:
                 event.ignore()
@@ -373,7 +373,7 @@ class MainWindow(QMainWindow):
         if self.task_running:
             quit_msg = ("A TASK IS RUNNING! Are you <b>really</b> sure "
                         "you want to stop?")
-            reply = QMessageBox.question(self, 'Really stop?',  quit_msg,
+            reply = QMessageBox.question(self, 'Really stop?', quit_msg,
                                          QMessageBox.Yes, QMessageBox.No)
             if reply != QMessageBox.Yes:
                 return
