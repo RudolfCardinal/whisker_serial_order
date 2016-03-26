@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 # whisker_serial_order/gui.py
 
+import cgi
 import logging
 import traceback
 
-from PySide.QtCore import Qt, Slot
+from PySide.QtCore import Qt, Signal, Slot
 from PySide.QtGui import (
     QApplication,
     QCheckBox,
@@ -64,24 +65,202 @@ WINDOW_TITLE = 'Serial Order'
 
 
 # =============================================================================
+# Base window displaying Python log, if used
+# =============================================================================
+
+
+class HtmlColorFormatter(logging.Formatter):
+    log_colors = {
+        logging.DEBUG: '#008B8B',  # dark cyan
+        logging.INFO: '#00FF00',  # green
+        logging.WARNING: '#FFFF00',  # yellow
+        logging.ERROR: '#FF0000',  # red
+        logging.CRITICAL: '#FF0000',  # red
+    }
+    log_background_colors = {
+        logging.DEBUG: None,
+        logging.INFO: None,
+        logging.WARNING: None,
+        logging.ERROR: None,
+        logging.CRITICAL: '#FFFFFF',  # white
+    }
+
+    def __init__(self):
+        # https://hg.python.org/cpython/file/3.5/Lib/logging/__init__.py
+        super().__init__(
+            fmt='%(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+            style='%'
+        )
+
+    def format(self, record):
+        # record is a LogRecord
+        # https://docs.python.org/3.4/library/logging.html#logging.LogRecord
+
+        # message = super().format(record)
+        super().format(record)
+        # Since fmt does not contain asctime, the Formatter.format()
+        # will not write asctime (since its usesTime()) function will be
+        # false. Therefore:
+        record.asctime = self.formatTime(record, self.datefmt)
+        bg_col = self.log_background_colors[record.levelno]
+        html = (
+            '<span style="color:#008B8B">{time}.{ms:03d} {name}:{lvname}: '
+            '</span><span style="color:{color}{bg}">{msg}</font><br>'.format(
+                time=record.asctime,
+                ms=int(record.msecs),
+                name=record.name,
+                lvname=record.levelname,
+                color=self.log_colors[record.levelno],
+                msg=cgi.escape(record.message),
+                bg=";background-color:{}".format(bg_col) if bg_col else "",
+            )
+        )
+        # print("record.__dict__: {}".format(record.__dict__))
+        # print("html: {}".format(html))
+        return html
+
+
+class HtmlHandler(logging.StreamHandler):
+    def __init__(self, logfunction, level=logging.INFO):
+        super().__init__()
+        self.logfunction = logfunction
+        self.setFormatter(HtmlColorFormatter())
+        self.setLevel(level)
+
+    def emit(self, record):
+        try:
+            html = self.format(record)
+            self.logfunction(html)
+        except:
+            self.handleError(record)
+
+
+LOGEDIT_STYLESHEET = """
+QTextEdit {
+    border: 1px solid black;
+    font-family: 'Dejavu Sans Mono', 'Courier';
+    font-size: 10pt;
+    background-color: black;
+    color: white;
+}
+"""
+
+
+class LogWindow(QMainWindow):
+    emit_msg = Signal(str)
+
+    def __init__(self, level=logging.INFO):
+        super().__init__()
+        self.setStyleSheet(LOGEDIT_STYLESHEET)
+
+        self.handler = HtmlHandler(self.log_message, level)
+
+        self.may_close = False
+
+        self.setWindowTitle(WINDOW_TITLE + " Python log")
+        self.setMinimumWidth(800)
+        self.setMinimumHeight(400)
+        # Remove close button:
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowCloseButtonHint)
+
+        log_group = StyledQGroupBox("Log")
+        log_layout_1 = QVBoxLayout()
+        log_layout_2 = QHBoxLayout()
+        self.log = QTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setLineWrapMode(QTextEdit.NoWrap)
+        log_clear_button = QPushButton('Clear log')
+        log_clear_button.clicked.connect(self.log.clear)
+        log_copy_button = QPushButton('Copy to clipboard')
+        log_copy_button.clicked.connect(self.copy_whole_log)
+        log_layout_2.addWidget(log_clear_button)
+        log_layout_2.addWidget(log_copy_button)
+        log_layout_2.addStretch()
+        log_layout_1.addWidget(self.log)
+        log_layout_1.addLayout(log_layout_2)
+        log_group.setLayout(log_layout_1)
+
+        main_widget = QWidget(self)
+        self.setCentralWidget(main_widget)
+        main_layout = QVBoxLayout(main_widget)
+        main_layout.addWidget(log_group)
+
+        self.emit_msg.connect(self.log_internal)
+
+    def get_handler(self):
+        return self.handler
+
+    def copy_whole_log(self):
+        # Ctrl-C will copy the selected parts.
+        # log.copy() will copy the selected parts.
+        self.log.selectAll()
+        self.log.copy()
+        self.log.moveCursor(QTextCursor.End)
+        self.scroll_to_end_of_log()
+
+    def scroll_to_end_of_log(self):
+        vsb = self.log.verticalScrollBar()
+        vsb.setValue(vsb.maximum())
+        hsb = self.log.horizontalScrollBar()
+        hsb.setValue(0)
+
+    def closeEvent(self, event):
+        """Trap exit."""
+        if not self.may_close:
+            # log.critical("logwindow: ignore closeEvent")
+            event.ignore()
+        else:
+            # log.critical("logwindow: accept closeEvent")
+            event.accept()
+
+    def log_message(self, html):
+        # Jump threads via a signal
+        self.emit_msg.emit(html)
+
+    @Slot(str)
+    def log_internal(self, html):
+        self.log.moveCursor(QTextCursor.End)
+        self.log.insertHtml(html)
+        self.scroll_to_end_of_log()
+
+    @Slot()
+    def exit(self):
+        # log.critical("logwindow: exit")
+        self.may_close = True
+        # closed = QMainWindow.close(self)
+        QMainWindow.close(self)
+        # log.critical("closed: {}".format(closed))
+
+
+# =============================================================================
 # Secondary GUI windows
 # =============================================================================
 
 class NoDatabaseSpecifiedWindow(QDialog):
+    exit_kill_log = Signal()
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle(WINDOW_TITLE)
         info = QLabel(MSG_DB_ENV_VAR_NOT_SPECIFIED)
         ok_buttons = QDialogButtonBox(QDialogButtonBox.Ok,
                                       Qt.Horizontal, self)
+        ok_buttons.accepted.connect(self.exit_kill_log)
         ok_buttons.accepted.connect(self.accept)
         layout = QVBoxLayout()
         layout.addWidget(info)
         layout.addWidget(ok_buttons)
         self.setLayout(layout)
 
+    def closeEvent(self, event):
+        self.exit_kill_log.emit()
+        event.accept()
+
 
 class WrongDatabaseVersionWindow(QDialog):
+    exit_kill_log = Signal()
+
     def __init__(self, current_revision, head_revision):
         super().__init__()
         self.setWindowTitle(WINDOW_TITLE)
@@ -93,6 +272,7 @@ class WrongDatabaseVersionWindow(QDialog):
         upgrade_button.clicked.connect(self.upgrade_database)
         ok_buttons = QDialogButtonBox(QDialogButtonBox.Ok,
                                       Qt.Horizontal, self)
+        ok_buttons.accepted.connect(self.exit_kill_log)
         ok_buttons.accepted.connect(self.accept)
 
         layout_upgrade = QHBoxLayout()
@@ -114,6 +294,10 @@ class WrongDatabaseVersionWindow(QDialog):
             QMessageBox.about(
                 self, "Failure",
                 "Failed to upgrade database. Error was: {}".format(str(e)))
+
+    def closeEvent(self, event):
+        self.exit_kill_log.emit()
+        event.accept()
 
 
 # =============================================================================
@@ -170,6 +354,8 @@ class ConfigStageTableModel(GenericAttrTableModel):
 class MainWindow(QMainWindow):
     # Don't inherit from QDialog, which has an additional Escape-to-close
     # function that's harder to trap. Use QWidget or QMainWindow.
+
+    exit_kill_log = Signal()
 
     def __init__(self, dbsettings):
         super().__init__()
@@ -290,6 +476,7 @@ class MainWindow(QMainWindow):
         # the GUI message loop. So we need to defer the call if subthreads are
         # running
         if not self.anything_running():
+            self.exit_kill_log.emit()
             event.accept()  # actually quit
             return
         # Now stop everything
@@ -308,7 +495,7 @@ class MainWindow(QMainWindow):
     def configure(self):
         readonly = self.anything_running()
         with session_thread_scope(self.dbsettings, readonly) as session:
-            w = ConfigPicker(session)
+            w = ConfigPicker(session, readonly=readonly)
             self.config_id = w.exec_returning_config_id()
         self.report_selected_config()
         self.set_button_states()
@@ -424,9 +611,7 @@ class MainWindow(QMainWindow):
     def on_status(self, msg, source=""):
         # http://stackoverflow.com/questions/16568451
         if source:
-            msg = "[{}] {}".format(source, msg)
-        if self.log.toPlainText():
-            msg = "\n" + msg
+            msg = "[{}] {}\n".format(source, msg)
         self.log.moveCursor(QTextCursor.End)
         self.log.insertPlainText(msg)
         self.scroll_to_end_of_log()
@@ -470,6 +655,7 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def help(self):
+        log.info("Help: launching {}".format(MANUAL_FILENAME))
         launch_external_file(MANUAL_FILENAME)
         self.status("Launched {}".format(MANUAL_FILENAME))
 
@@ -526,9 +712,8 @@ class ConfigPicker(TransactionalDialog):
         readonly_layout.addWidget(self.ro_tv)
         self.ro_view_button = QPushButton("View")
         readonly_button_layout.addWidget(self.ro_view_button)
-        if not readonly:
-            self.ro_clone_button = QPushButton("Clone")
-            readonly_button_layout.addWidget(self.ro_clone_button)
+        self.ro_clone_button = QPushButton("Clone")
+        readonly_button_layout.addWidget(self.ro_clone_button)
         readonly_button_layout.addStretch()
         readonly_layout.addLayout(readonly_button_layout)
         readonly_group.setLayout(readonly_layout)
@@ -594,7 +779,7 @@ class ConfigPicker(TransactionalDialog):
     def set_ro_button_states(self):
         selected = self.ro_tv.is_selected()
         self.ro_view_button.setEnabled(selected)
-        self.ro_clone_button.setEnabled(selected)
+        self.ro_clone_button.setEnabled(selected and not self.readonly)
 
     def delete_ed(self):
         self.ed_tv.remove_selected()
@@ -745,8 +930,8 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         if not self.readonly:
             self.stages_remove_button.setEnabled(maydelete)
         self.stages_edit_button.setEnabled(selected)
-        self.stages_up_button.setEnabled(selected)
-        self.stages_down_button.setEnabled(selected)
+        self.stages_up_button.setEnabled(selected and not self.readonly)
+        self.stages_down_button.setEnabled(selected and not self.readonly)
 
     def add_stage(self):
         config = ConfigStage(config_id=self.obj.config_id,

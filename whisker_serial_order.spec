@@ -45,8 +45,7 @@ exe = EXE(
     debug=False,
     strip=False,
     upx=True,
-    console=True,
-    # console=False  # NB!
+    console=False  # NB!
 )
 coll = COLLECT(
     exe,

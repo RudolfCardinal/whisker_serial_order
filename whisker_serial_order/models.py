@@ -95,7 +95,8 @@ class Config(SqlAlchemyAttrDictMixin, Base):
     modified_at = Column(ArrowMicrosecondType,
                          default=arrow.now, onupdate=arrow.now)
     read_only = Column(Boolean)  # used for a live task, therefore can't edit
-    stages = relationship("ConfigStage", order_by="ConfigStage.stagenum")
+    stages = relationship("ConfigStage", order_by="ConfigStage.stagenum",
+                          cascade="save-update, merge, delete")
     # No explicit relationship to Session.
     # This means that deepcopy() won't copy any non-config stuff, which is
     # helpful, but means that we have to use the session as the starting point

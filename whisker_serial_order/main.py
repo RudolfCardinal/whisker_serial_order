@@ -38,7 +38,7 @@ import sadisplay
 from whisker.debug_qt import enable_signal_debugging_simply
 from whisker.logging import (
     configure_logger_for_colour,
-    copy_all_logs_to_file,
+    copy_root_log_to_file,
 )
 from whisker.qt import run_gui
 from whisker.sqlalchemy import (
@@ -57,6 +57,7 @@ from whisker_serial_order.constants import (
     WRONG_DATABASE_VERSION_STUB,
 )
 from whisker_serial_order.gui import (
+    LogWindow,
     MainWindow,
     NoDatabaseSpecifiedWindow,
     WrongDatabaseVersionWindow,
@@ -89,6 +90,8 @@ def main():
                         help="Filename to append log to")
     parser.add_argument('--verbose', '-v', action='count', default=0,
                         help="Be verbose. (Use twice for extra verbosity.)")
+    parser.add_argument('--guilog', action="store_true",
+                        help="Show Python log in a GUI window")
     parser.add_argument('--upgrade-database', action="store_true",
                         help="Upgrade database to current version.")
     parser.add_argument('--debug-qt-signals', action="store_true",
@@ -129,15 +132,35 @@ def main():
     qt_args = sys.argv[:1] + unparsed_args
 
     # -------------------------------------------------------------------------
+    # Modify settings if we're in a PyInstaller bundle
+    # -------------------------------------------------------------------------
+    in_bundle = getattr(sys, 'frozen', False)
+    if in_bundle:
+        args.gui = True
+    if not args.gui:
+        args.guilog = False
+
+    # -------------------------------------------------------------------------
+    # Create QApplication before we create any windows (or Qt will crash)
+    # -------------------------------------------------------------------------
+    qt_app = QApplication(qt_args)
+
+    # -------------------------------------------------------------------------
     # Logging
     # -------------------------------------------------------------------------
     rootlogger = logging.getLogger()
-    rootlogger.setLevel(logging.DEBUG if args.verbose >= 1 else logging.INFO)
+    loglevel = logging.DEBUG if args.verbose >= 1 else logging.INFO
+    rootlogger.setLevel(loglevel)
     configure_logger_for_colour(rootlogger)  # configure root logger
     logging.getLogger('whisker').setLevel(logging.DEBUG if args.verbose >= 2
                                           else logging.INFO)
     if args.logfile:
-        copy_all_logs_to_file(args.logfile)
+        copy_root_log_to_file(args.logfile)
+    if args.guilog:
+        log_window = LogWindow(level=loglevel)
+        log_window_handler = log_window.get_handler()
+        rootlogger.addHandler(log_window_handler)
+        log_window.show()
 
     # -------------------------------------------------------------------------
     # Info
@@ -151,7 +174,6 @@ def main():
     log.debug("Whisker client version: {}".format(whisker.version.VERSION))
     in_bundle = getattr(sys, 'frozen', False)
     if in_bundle:
-        args.gui = True
         log.debug("Running inside a PyInstaller bundle")
     if args.gui:
         log.debug("Running in GUI-only mode")
@@ -177,11 +199,6 @@ def main():
         sys.exit(0)
 
     # -------------------------------------------------------------------------
-    # Create QApplication before we create any windows (or Qt will crash)
-    # -------------------------------------------------------------------------
-    qt_app = QApplication(qt_args)
-
-    # -------------------------------------------------------------------------
     # File output
     # -------------------------------------------------------------------------
     if args.outdir:
@@ -200,7 +217,10 @@ def main():
         set_database_echo(args.dbecho)
     if not dbsettings['url']:
         if args.gui:
-            return run_gui(qt_app, NoDatabaseSpecifiedWindow())
+            win = NoDatabaseSpecifiedWindow()
+            if args.guilog:
+                win.exit_kill_log.connect(log_window.exit)
+            return run_gui(qt_app, win)
         raise ValueError(MSG_DB_ENV_VAR_NOT_SPECIFIED)
     log.debug("Using database URL: {}".format(dbsettings['url']))
     if database_is_sqlite(dbsettings):
@@ -216,10 +236,10 @@ def main():
         dbsettings['url'], ALEMBIC_CONFIG_FILENAME, ALEMBIC_BASE_DIR)
     if current_revision != head_revision:
         if args.gui:
-            return run_gui(
-                qt_app,
-                WrongDatabaseVersionWindow(current_revision, head_revision)
-            )
+            win = WrongDatabaseVersionWindow(current_revision, head_revision)
+            if args.guilog:
+                win.exit_kill_log.connect(log_window.exit)
+            return run_gui(qt_app, win)
         raise ValueError(WRONG_DATABASE_VERSION_STUB.format(
             head_revision=head_revision,
             current_revision=current_revision))
@@ -229,7 +249,10 @@ def main():
     # -------------------------------------------------------------------------
     log.debug("Seeding random number generator")
     random.seed()
-    return run_gui(qt_app, MainWindow(dbsettings))
+    win = MainWindow(dbsettings)
+    if args.guilog:
+        win.exit_kill_log.connect(log_window.exit)
+    return run_gui(qt_app, win)
 
 
 # =============================================================================
