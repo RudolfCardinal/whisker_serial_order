@@ -4,7 +4,7 @@
 # See LICENSE for details.
 
 
-VERSION = '0.4.0'
+VERSION = '0.4.1'
 # Use semantic versioning: http://semver.org/
 
 MAX_VERSION_LENGTH = 50

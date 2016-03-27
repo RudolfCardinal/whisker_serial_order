@@ -40,7 +40,10 @@ from whisker.logging import (
     configure_logger_for_colour,
     copy_root_log_to_file,
 )
-from whisker.qt import run_gui
+from whisker.qt import (
+    LogWindow,
+    run_gui,
+)
 from whisker.sqlalchemy import (
     database_is_sqlite,
     get_current_and_head_revision,
@@ -57,9 +60,9 @@ from whisker_serial_order.constants import (
     WRONG_DATABASE_VERSION_STUB,
 )
 from whisker_serial_order.gui import (
-    LogWindow,
     MainWindow,
     NoDatabaseSpecifiedWindow,
+    WINDOW_TITLE,
     WrongDatabaseVersionWindow,
 )
 import whisker_serial_order.models as models
@@ -157,102 +160,119 @@ def main():
     if args.logfile:
         copy_root_log_to_file(args.logfile)
     if args.guilog:
-        log_window = LogWindow(level=loglevel)
+        log_window = LogWindow(level=loglevel,
+                               window_title=WINDOW_TITLE + " Python log")
         log_window_handler = log_window.get_handler()
         rootlogger.addHandler(log_window_handler)
         log_window.show()
 
-    # -------------------------------------------------------------------------
-    # Info
-    # -------------------------------------------------------------------------
-    log.info("whisker_serial_order v{}: Serial order task for Whisker, "
-             "by Rudolf Cardinal (rudolf@pobox.com)".format(VERSION))
-    log.debug("args: {}".format(args))
-    log.debug("qt_args: {}".format(qt_args))
-    log.debug("PySide version: {}".format(PySide.__version__))
-    log.debug("QtCore version: {}".format(PySide.QtCore.qVersion()))
-    log.debug("Whisker client version: {}".format(whisker.version.VERSION))
-    in_bundle = getattr(sys, 'frozen', False)
-    if in_bundle:
-        log.debug("Running inside a PyInstaller bundle")
-    if args.gui:
-        log.debug("Running in GUI-only mode")
-    if args.debug_qt_signals:
-        enable_signal_debugging_simply()
+    # If any exceptions happen up to this point, we're a bit stuffed.
+    # But from now on, we can trap anything and see it in the GUI log, if
+    # enabled, even if we have no console.
 
-    # -------------------------------------------------------------------------
-    # Schema diagram generation only?
-    # -------------------------------------------------------------------------
-    if args.schema:
-        umlfilename = args.schemastem + '.plantuml'
-        log.info("Making schema PlantUML: {}".format(umlfilename))
-        desc = sadisplay.describe([
-            getattr(models, attr) for attr in dir(models)
-        ])
-        log.debug(desc)
-        with open(umlfilename, 'w') as f:
-            f.write(sadisplay.plantuml(desc))
-        log.info("Making schema PNG: {}".format(args.schemastem + '.png'))
-        cmd = [args.java, '-jar', args.plantuml, umlfilename]
-        log.debug(cmd)
-        subprocess.check_call(cmd)
-        sys.exit(0)
+    try:
 
-    # -------------------------------------------------------------------------
-    # File output
-    # -------------------------------------------------------------------------
-    if args.outdir:
-        set_output_directory(args.outdir)
-    log.info("Using output directory: {}".format(get_output_directory()))
-    if not os.access(get_output_directory(), os.W_OK):
-        raise ValueError("Cannot write to output directory")
-
-    # -------------------------------------------------------------------------
-    # Database
-    # -------------------------------------------------------------------------
-    # Get URL, or complain
-    if args.dburl:
-        set_database_url(args.dburl)
-    if args.dbecho:
-        set_database_echo(args.dbecho)
-    if not dbsettings['url']:
+        # ---------------------------------------------------------------------
+        # Info
+        # ---------------------------------------------------------------------
+        log.info("whisker_serial_order v{}: Serial order task for Whisker, "
+                 "by Rudolf Cardinal (rudolf@pobox.com)".format(VERSION))
+        log.debug("args: {}".format(args))
+        log.debug("qt_args: {}".format(qt_args))
+        log.debug("PySide version: {}".format(PySide.__version__))
+        log.debug("QtCore version: {}".format(PySide.QtCore.qVersion()))
+        log.debug("Whisker client version: {}".format(whisker.version.VERSION))
+        in_bundle = getattr(sys, 'frozen', False)
+        if in_bundle:
+            log.debug("Running inside a PyInstaller bundle")
         if args.gui:
-            win = NoDatabaseSpecifiedWindow()
-            if args.guilog:
-                win.exit_kill_log.connect(log_window.exit)
-            return run_gui(qt_app, win)
-        raise ValueError(MSG_DB_ENV_VAR_NOT_SPECIFIED)
-    log.debug("Using database URL: {}".format(dbsettings['url']))
-    if database_is_sqlite(dbsettings):
-        log.critical(
-            "Avoid SQLite: not safe for concurrent use in this context")
-        sys.exit(1)
+            log.debug("Running in GUI-only mode")
+        if args.debug_qt_signals:
+            enable_signal_debugging_simply()
 
-    # Has the user requested a command-line database upgrade?
-    if args.upgrade_database:
-        sys.exit(upgrade_database(ALEMBIC_CONFIG_FILENAME, ALEMBIC_BASE_DIR))
-    # Is the database at the correct version?
-    (current_revision, head_revision) = get_current_and_head_revision(
-        dbsettings['url'], ALEMBIC_CONFIG_FILENAME, ALEMBIC_BASE_DIR)
-    if current_revision != head_revision:
-        if args.gui:
-            win = WrongDatabaseVersionWindow(current_revision, head_revision)
-            if args.guilog:
-                win.exit_kill_log.connect(log_window.exit)
-            return run_gui(qt_app, win)
-        raise ValueError(WRONG_DATABASE_VERSION_STUB.format(
-            head_revision=head_revision,
-            current_revision=current_revision))
+        # ---------------------------------------------------------------------
+        # Schema diagram generation only?
+        # ---------------------------------------------------------------------
+        if args.schema:
+            umlfilename = args.schemastem + '.plantuml'
+            log.info("Making schema PlantUML: {}".format(umlfilename))
+            desc = sadisplay.describe([
+                getattr(models, attr) for attr in dir(models)
+            ])
+            log.debug(desc)
+            with open(umlfilename, 'w') as f:
+                f.write(sadisplay.plantuml(desc))
+            log.info("Making schema PNG: {}".format(args.schemastem + '.png'))
+            cmd = [args.java, '-jar', args.plantuml, umlfilename]
+            log.debug(cmd)
+            subprocess.check_call(cmd)
+            sys.exit(0)
 
-    # -------------------------------------------------------------------------
-    # Run app
-    # -------------------------------------------------------------------------
-    log.debug("Seeding random number generator")
-    random.seed()
-    win = MainWindow(dbsettings)
-    if args.guilog:
-        win.exit_kill_log.connect(log_window.exit)
-    return run_gui(qt_app, win)
+        # ---------------------------------------------------------------------
+        # File output
+        # ---------------------------------------------------------------------
+        if args.outdir:
+            set_output_directory(args.outdir)
+        log.info("Using output directory: {}".format(get_output_directory()))
+        if not os.access(get_output_directory(), os.W_OK):
+            raise ValueError("Cannot write to output directory")
+
+        # ---------------------------------------------------------------------
+        # Database
+        # ---------------------------------------------------------------------
+        # Get URL, or complain
+        if args.dburl:
+            set_database_url(args.dburl)
+        if args.dbecho:
+            set_database_echo(args.dbecho)
+        if not dbsettings['url']:
+            if args.gui:
+                win = NoDatabaseSpecifiedWindow()
+                if args.guilog:
+                    win.exit_kill_log.connect(log_window.exit)
+                return run_gui(qt_app, win)
+            raise ValueError(MSG_DB_ENV_VAR_NOT_SPECIFIED)
+        log.debug("Using database URL: {}".format(dbsettings['url']))
+        if database_is_sqlite(dbsettings):
+            log.critical(
+                "Avoid SQLite: not safe for concurrent use in this context")
+            sys.exit(1)
+
+        # Has the user requested a command-line database upgrade?
+        if args.upgrade_database:
+            sys.exit(upgrade_database(ALEMBIC_CONFIG_FILENAME,
+                                      ALEMBIC_BASE_DIR))
+        # Is the database at the correct version?
+        (current_revision, head_revision) = get_current_and_head_revision(
+            dbsettings['url'], ALEMBIC_CONFIG_FILENAME, ALEMBIC_BASE_DIR)
+        if current_revision != head_revision:
+            if args.gui:
+                win = WrongDatabaseVersionWindow(current_revision,
+                                                 head_revision)
+                if args.guilog:
+                    win.exit_kill_log.connect(log_window.exit)
+                return run_gui(qt_app, win)
+            raise ValueError(WRONG_DATABASE_VERSION_STUB.format(
+                head_revision=head_revision,
+                current_revision=current_revision))
+
+        # ---------------------------------------------------------------------
+        # Run app
+        # ---------------------------------------------------------------------
+        log.debug("Seeding random number generator")
+        random.seed()
+        win = MainWindow(dbsettings)
+        if args.guilog:
+            win.exit_kill_log.connect(log_window.exit)
+        return run_gui(qt_app, win)
+
+    except:
+        if args.guilog:
+            log.critical(traceback.format_exc())
+            log_window.set_may_close(True)
+            return qt_app.exec_()
+        else:
+            raise
 
 
 # =============================================================================
