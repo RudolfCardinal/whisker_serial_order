@@ -161,9 +161,8 @@ def main():
         copy_root_log_to_file(args.logfile)
     if args.guilog:
         log_window = LogWindow(level=loglevel,
-                               window_title=WINDOW_TITLE + " Python log")
-        log_window_handler = log_window.get_handler()
-        rootlogger.addHandler(log_window_handler)
+                               window_title=WINDOW_TITLE + " Python log",
+                               logger=rootlogger)
         log_window.show()
 
     # If any exceptions happen up to this point, we're a bit stuffed.
@@ -182,7 +181,6 @@ def main():
         log.debug("PySide version: {}".format(PySide.__version__))
         log.debug("QtCore version: {}".format(PySide.QtCore.qVersion()))
         log.debug("Whisker client version: {}".format(whisker.version.VERSION))
-        in_bundle = getattr(sys, 'frozen', False)
         if in_bundle:
             log.debug("Running inside a PyInstaller bundle")
         if args.gui:

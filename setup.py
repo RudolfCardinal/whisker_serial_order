@@ -108,7 +108,7 @@ setup(
         'SQLAlchemy',  # SQL Alchemy database interface
         'sqlalchemy-utils',  # http://sqlalchemy-utils.readthedocs.org/
         'sadisplay',  # SQL Alchemy schema display script
-        'whisker>=0.3.1',  # Whisker client library
+        'whisker>=0.3.2',  # Whisker client library
 
         # ---------------------------------------------------------------------
         # For development only:
