@@ -18,6 +18,7 @@ LINESEP = "=" * 79
 if getattr(sys, 'frozen', False):
     # Running inside a PyInstaller bundle.
     # http://pythonhosted.org/PyInstaller/#run-time-operation
+    # noinspection PyProtectedMember,PyUnresolvedReferences
     ALEMBIC_BASE_DIR = sys._MEIPASS
 else:
     # Running in a normal Python environment.
@@ -88,6 +89,7 @@ DATETIME_FORMAT_PRETTY = "%Y-%m-%d %H:%M:%S"
 if getattr(sys, 'frozen', False):
     # Running inside a PyInstaller bundle.
     # http://pythonhosted.org/PyInstaller/#run-time-operation
+    # noinspection PyProtectedMember,PyUnresolvedReferences
     CURRENT_DIR = sys._MEIPASS
 else:
     # Running in a normal Python environment.

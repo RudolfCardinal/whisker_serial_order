@@ -361,6 +361,7 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         self.response_correct = response_hole == self.choice_hole_earliest
         return self.response_correct
 
+    # noinspection PyUnusedLocal
     def record_premature(self, timestamp):
         self.n_premature += 1
 

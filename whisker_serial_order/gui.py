@@ -118,9 +118,11 @@ class WrongDatabaseVersionWindow(QDialog):
     def upgrade_database(self):
         try:
             upgrade_database(ALEMBIC_CONFIG_FILENAME, ALEMBIC_BASE_DIR)
+            # noinspection PyCallByClass
             QMessageBox.about(self, "Success",
                               "Successfully upgraded database.")
         except Exception as e:
+            # noinspection PyCallByClass
             QMessageBox.about(
                 self, "Failure",
                 "Failed to upgrade database. Error was: {}".format(str(e)))
@@ -287,6 +289,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """Trap exit."""
         quit_msg = "Are you sure you want to exit?"
+        # noinspection PyCallByClass
         reply = QMessageBox.question(self, 'Really exit?', quit_msg,
                                      QMessageBox.Yes, QMessageBox.No)
         if reply != QMessageBox.Yes:
@@ -296,6 +299,7 @@ class MainWindow(QMainWindow):
         if self.task_running:
             quit_msg = ("A TASK IS RUNNING! Are you <b>really</b> sure "
                         "you want to exit?")
+            # noinspection PyCallByClass
             reply = QMessageBox.question(self, 'Really exit?', quit_msg,
                                          QMessageBox.Yes, QMessageBox.No)
             if reply != QMessageBox.Yes:
@@ -348,6 +352,7 @@ class MainWindow(QMainWindow):
     @Slot()
     def start(self):
         if self.anything_running():
+            # noinspection PyCallByClass
             QMessageBox.about(self, "Can't start", "Already running.")
             return
         try:
@@ -370,6 +375,7 @@ class MainWindow(QMainWindow):
         except AttributeError as e:
             traceback.print_exc()
             log.debug("start: error: {}".format(e))
+            # noinspection PyCallByClass
             QMessageBox.about(self, "Can't start",
                               "Failed to start; config not set.")
             return
@@ -384,12 +390,14 @@ class MainWindow(QMainWindow):
     @Slot()
     def stop(self):
         if not self.anything_running():
+            # noinspection PyCallByClass
             QMessageBox.about(self, "Can't stop",
                               "Nothing to stop: not running.")
             return
         if self.task_running:
             quit_msg = ("A TASK IS RUNNING! Are you <b>really</b> sure "
                         "you want to stop?")
+            # noinspection PyCallByClass
             reply = QMessageBox.question(self, 'Really stop?', quit_msg,
                                          QMessageBox.Yes, QMessageBox.No)
             if reply != QMessageBox.Yes:
@@ -404,6 +412,7 @@ class MainWindow(QMainWindow):
         self.status("Task finished")
         self.whisker_owner = None
         if self.exit_pending:
+            # noinspection PyArgumentList
             QApplication.quit()
         self.report("Finished.")
         self.set_button_states()
@@ -481,6 +490,7 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def about(self):
+        # noinspection PyCallByClass
         QMessageBox.about(self, WINDOW_TITLE, ABOUT)
 
     @Slot()

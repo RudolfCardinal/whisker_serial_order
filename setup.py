@@ -97,18 +97,20 @@ setup(
     },
 
     install_requires=[
-        'python-dateutil==2.5.1',  # fixed problem with PyInstaller for v2.5.0
+        'alembic==0.8.4',  # migration tool for sqlalchemy
         'arrow',  # better datetime
+        'python-dateutil==2.5.1',  # fixed problem with PyInstaller for v2.5.0
+        'PySide>=1.2.2',  # Python interface to Qt
+        'SQLAlchemy',  # SQL Alchemy database interface
+        'sqlalchemy-utils',  # http://sqlalchemy-utils.readthedocs.org/
+        'sadisplay',  # SQL Alchemy schema display script
+        'whisker>=0.3.3',  # Whisker client library
+
         # 'mysqlclient',  # MySQL engine (Python 3 replacement for MySQLdb)
         # ... but under Windows, a right pain to install; use
         # https://dev.mysql.com/downloads/connector/python/ instead
         # 'psycopg2',  # PostgreSQL engine; but requires PostgreSQL installed
         # ... (fails with error re missing pg_config otherwise)
-        'PySide>=1.2.2',  # Python interface to Qt
-        'SQLAlchemy',  # SQL Alchemy database interface
-        'sqlalchemy-utils',  # http://sqlalchemy-utils.readthedocs.org/
-        'sadisplay',  # SQL Alchemy schema display script
-        'whisker>=0.3.2',  # Whisker client library
 
         # ---------------------------------------------------------------------
         # For development only:

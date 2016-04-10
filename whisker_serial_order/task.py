@@ -10,11 +10,6 @@ import os
 import arrow
 from PySide.QtCore import Signal
 from whisker.api import (
-    CMD_CLAIM_GROUP,
-    CMD_LINE_CLAIM,
-    CMD_REPORT_NAME,
-    FLAG_INPUT,
-    FLAG_OUTPUT,
     min_to_ms,
     s_to_ms,
 )
@@ -218,7 +213,7 @@ class SerialOrderTask(WhiskerTask):
     def on_connect(self):
         self.info("Connected")
         self.whisker.timestamps(True)
-        self.whisker.command(CMD_REPORT_NAME, "SerialOrder", VERSION)
+        self.whisker.report_name("SerialOrder", VERSION)
         try:
             self.claim()
             self.start_task()
@@ -228,11 +223,13 @@ class SerialOrderTask(WhiskerTask):
 
     def claim(self):
         self.info("Claiming devices...")
-        self.cmd(CMD_CLAIM_GROUP, self.config.devicegroup)
+        self.whisker.claim_group(self.config.devicegroup)
         for d in DEV_DI.values():
-            self.cmd(CMD_LINE_CLAIM, self.config.devicegroup, d, FLAG_INPUT)
+            self.whisker.claim_line(group=self.config.devicegroup, device=d,
+                                    output=False)
         for d in DEV_DO.values():
-            self.cmd(CMD_LINE_CLAIM, self.config.devicegroup, d, FLAG_OUTPUT)
+            self.whisker.claim_line(group=self.config.devicegroup, device=d,
+                                    output=True)
         self.info("... devices successfully claimed")
 
     def start_task(self):
@@ -538,7 +535,8 @@ class SerialOrderTask(WhiskerTask):
         return self.trialplans[0]
         # removal occurs elsewhere
 
-    def create_trial_plans(self, seqlen):
+    @staticmethod
+    def create_trial_plans(seqlen):
         log.info("Generating new trial plans")
         sequences = list(itertools.permutations(ALL_HOLE_NUMS, seqlen))
         serial_order_choices = list(itertools.combinations(
@@ -601,4 +599,4 @@ class SerialOrderTask(WhiskerTask):
         dump_connection_info(engine, fileobj)
         dump_ddl(Base.metadata, dialect_name=engine.dialect.name,
                  fileobj=fileobj)
-        dump_orm_tree_as_insert_sql(engine, session, self.tasksession, fileobj)
+        dump_orm_tree_as_insert_sql(engine, self.tasksession, fileobj)
