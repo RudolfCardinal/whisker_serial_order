@@ -104,7 +104,7 @@ setup(
         'SQLAlchemy',  # SQL Alchemy database interface
         'sqlalchemy-utils',  # http://sqlalchemy-utils.readthedocs.org/
         'sadisplay',  # SQL Alchemy schema display script
-        'whisker>=0.3.3',  # Whisker client library
+        'whisker>=0.3.4',  # Whisker client library
 
         # 'mysqlclient',  # MySQL engine (Python 3 replacement for MySQLdb)
         # ... but under Windows, a right pain to install; use
