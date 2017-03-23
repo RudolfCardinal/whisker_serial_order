@@ -75,7 +75,7 @@ You will also need:
 </ul>
 
 By Rudolf Cardinal (rudolf@pobox.com).<br>
-Copyright &copy; 2016 Rudolf Cardinal.
+Copyright &copy; 2016-2017 Rudolf Cardinal.
 For licensing details see LICENSE.txt.
 """.format(
     DB_URL_ENV_VAR=DB_URL_ENV_VAR,

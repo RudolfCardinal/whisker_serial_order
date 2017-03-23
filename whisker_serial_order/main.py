@@ -32,10 +32,11 @@ import subprocess
 import sys
 import traceback
 
-import PySide
-from PySide.QtGui import QApplication
+from PyQt5.Qt import PYQT_VERSION_STR
+from PyQt5.QtCore import QT_VERSION_STR
+from PyQt5.QtWidgets import QApplication
 import sadisplay
-from whisker.debug_qt import enable_signal_debugging_simply
+# from whisker.debug_qt import enable_signal_debugging_simply
 from whisker.logging import (
     configure_logger_for_colour,
     copy_root_log_to_file,
@@ -73,6 +74,7 @@ from whisker_serial_order.settings import (
     set_database_url,
     set_output_directory,
 )
+from whisker_serial_order.task import SerialOrderTask
 from whisker_serial_order.version import VERSION
 
 log = logging.getLogger(__name__)
@@ -82,7 +84,7 @@ log = logging.getLogger(__name__)
 # Main
 # =============================================================================
 
-def main():
+def main() -> int:
     # -------------------------------------------------------------------------
     # Arguments
     # -------------------------------------------------------------------------
@@ -97,8 +99,8 @@ def main():
                         help="Show Python log in a GUI window")
     parser.add_argument('--upgrade-database', action="store_true",
                         help="Upgrade database to current version.")
-    parser.add_argument('--debug-qt-signals', action="store_true",
-                        help="Debug QT signals.")
+    # parser.add_argument('--debug-qt-signals', action="store_true",
+    #                     help="Debug QT signals.")
     parser.add_argument(
         "--dburl", default=None,
         help="Database URL (if not specified, task will look in {} "
@@ -125,6 +127,9 @@ def main():
         "--schemastem", default='schema',
         help="Stem for output filenames (for schema diagrams); default is "
         "'schema'; '.plantuml' and '.png' are appended")
+    parser.add_argument(
+        "--testtrialplan", metavar='SEQUENCE_LEN', type=int, default=None,
+        help="Print a test trial plan of the specified sequence length")
 
     # We could allow extra Qt arguments:
     # args, unparsed_args = parser.parse_known_args()
@@ -179,15 +184,15 @@ def main():
                  "by Rudolf Cardinal (rudolf@pobox.com)".format(VERSION))
         log.debug("args: {}".format(args))
         log.debug("qt_args: {}".format(qt_args))
-        log.debug("PySide version: {}".format(PySide.__version__))
-        log.debug("QtCore version: {}".format(PySide.QtCore.qVersion()))
+        log.debug("PyQt version: {}".format(PYQT_VERSION_STR))
+        log.debug("QtCore version: {}".format(QT_VERSION_STR))
         log.debug("Whisker client version: {}".format(whisker.version.VERSION))
         if in_bundle:
             log.debug("Running inside a PyInstaller bundle")
         if args.gui:
             log.debug("Running in GUI-only mode")
-        if args.debug_qt_signals:
-            enable_signal_debugging_simply()
+        # if args.debug_qt_signals:
+        #     enable_signal_debugging_simply()
 
         # ---------------------------------------------------------------------
         # Schema diagram generation only?
@@ -205,6 +210,32 @@ def main():
             cmd = [args.java, '-jar', args.plantuml, umlfilename]
             log.debug(cmd)
             subprocess.check_call(cmd)
+            sys.exit(0)
+
+        # ---------------------------------------------------------------------
+        # Demo trial plan only?
+        # ---------------------------------------------------------------------
+        if args.testtrialplan:
+            task = SerialOrderTask(dbsettings={}, config_id=-1)
+            tplist = task.create_trial_plans(args.testtrialplan)
+            print("""
+Explanation:
+- there are 5 holes, numbered 1-5
+- sequence: the sequence of hole numbers presented in the trial
+    e.g. for a sequence length of 3, you might have sequence=(3, 1, 4),
+    meaning that the subject will be shown hole 3, then hole 1, then hole 4,
+    in the first phase
+- hole_choice: the two holes presented during the choice phase
+    e.g. hole_choice=[3,4]
+- serial_order_choice: the serial order, in the first phase, of the two holes
+    offered in the second (choice) phase -- in this example, you would get
+    serial_order_choice=[1,3], because hole 3 was offered in the choice phase
+    and was in position 1 in the sequence, and hole 4 was offered in the
+    choice phase and was in position 3 in the sequence.
+Hint: use grep to check the output.
+            """)
+            for i, tp in enumerate(tplist):
+                print("{}. {}".format(i, tp))
             sys.exit(0)
 
         # ---------------------------------------------------------------------

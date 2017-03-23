@@ -18,20 +18,20 @@ filesettings = {
 }
 
 
-def set_database_url(url):
+def set_database_url(url: str) -> None:
     global dbsettings
     dbsettings['url'] = url
 
 
-def set_database_echo(echo):
+def set_database_echo(echo: bool) -> None:
     global dbsettings
     dbsettings['echo'] = echo
 
 
-def set_output_directory(directory):
+def set_output_directory(directory: str) -> None:
     global filesettings
     filesettings['output_directory'] = directory
 
 
-def get_output_directory():
+def get_output_directory() -> str:
     return filesettings['output_directory']

@@ -25,7 +25,8 @@ def run_migrations_offline():
 
     """
     # http://alembic.readthedocs.org/en/latest/cookbook.html
-    def process_revision_directives(context, revision, directives):
+    # noinspection PyUnusedLocal
+    def process_revision_directives(context_, revision, directives):
         if config.cmd_opts.autogenerate:
             script = directives[0]
             if script.upgrade_ops.is_empty():
@@ -58,7 +59,8 @@ def run_migrations_online():
         poolclass=pool.NullPool)
 
     # http://alembic.readthedocs.org/en/latest/cookbook.html
-    def process_revision_directives(context, revision, directives):
+    # noinspection PyUnusedLocal
+    def process_revision_directives(context_, revision, directives):
         if config.cmd_opts.autogenerate:
             script = directives[0]
             if script.upgrade_ops.is_empty():

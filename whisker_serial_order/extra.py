@@ -1,8 +1,15 @@
 #!/usr/bin/env python
 # whisker_serial_order/extra.py
 
+import datetime
+from typing import Optional, Union
+import arrow
 
-def latency_s(t1, t2):
+TimeType = Union[datetime.datetime, arrow.Arrow]
+
+
+def latency_s(t1: Optional[TimeType],
+              t2: Optional[TimeType]) -> Optional[float]:
     if t1 is None or t2 is None:
         return None
     delta = t2 - t1

@@ -3,9 +3,16 @@
 
 import logging
 import traceback
+from typing import Any, Dict, Optional
 
-from PySide.QtCore import Qt, Signal, Slot
-from PySide.QtGui import (
+from PyQt5.QtCore import (
+    QEvent,
+    QObject,
+    Qt,
+    pyqtSignal,
+    pyqtSlot,
+)
+from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
     QDialog,
@@ -20,6 +27,7 @@ from PySide.QtGui import (
     QVBoxLayout,
     QWidget,
 )
+from sqlalchemy.orm import Session  # for type hints
 from whisker.exceptions import ValidationError
 from whisker.lang import launch_external_file
 from whisker.qtclient import WhiskerOwner
@@ -67,9 +75,10 @@ WINDOW_TITLE = 'Serial Order'
 # =============================================================================
 
 class NoDatabaseSpecifiedWindow(QDialog):
-    exit_kill_log = Signal()
+    exit_kill_log = pyqtSignal()
 
-    def __init__(self):
+    # noinspection PyArgumentList,PyUnresolvedReferences
+    def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(WINDOW_TITLE)
         info = QLabel(MSG_DB_ENV_VAR_NOT_SPECIFIED)
@@ -82,15 +91,17 @@ class NoDatabaseSpecifiedWindow(QDialog):
         layout.addWidget(ok_buttons)
         self.setLayout(layout)
 
-    def closeEvent(self, event):
+    # noinspection PyPep8Naming
+    def closeEvent(self, event: QEvent) -> None:
         self.exit_kill_log.emit()
         event.accept()
 
 
 class WrongDatabaseVersionWindow(QDialog):
-    exit_kill_log = Signal()
+    exit_kill_log = pyqtSignal()
 
-    def __init__(self, current_revision, head_revision):
+    # noinspection PyArgumentList,PyUnresolvedReferences
+    def __init__(self, current_revision: str, head_revision: str) -> None:
         super().__init__()
         self.setWindowTitle(WINDOW_TITLE)
 
@@ -113,20 +124,22 @@ class WrongDatabaseVersionWindow(QDialog):
         main_layout.addWidget(ok_buttons)
         self.setLayout(main_layout)
 
-    @Slot()
-    def upgrade_database(self):
+    # noinspection PyArgumentList
+    @pyqtSlot()
+    def upgrade_database(self) -> None:
         try:
             upgrade_database(ALEMBIC_CONFIG_FILENAME, ALEMBIC_BASE_DIR)
-            # noinspection PyCallByClass
+            # noinspection PyCallByClass,PyTypeChecker,PyArgumentList
             QMessageBox.about(self, "Success",
                               "Successfully upgraded database.")
         except Exception as e:
-            # noinspection PyCallByClass
+            # noinspection PyCallByClass,PyTypeChecker
             QMessageBox.about(
                 self, "Failure",
                 "Failed to upgrade database. Error was: {}".format(str(e)))
 
-    def closeEvent(self, event):
+    # noinspection PyPep8Naming
+    def closeEvent(self, event: QEvent) -> None:
         self.exit_kill_log.emit()
         event.accept()
 
@@ -147,7 +160,7 @@ class ConfigTableModel(GenericAttrTableModel):
     ]
     DEFAULT_SORT_COLUMN_NAME = "get_modified_at_pretty"
 
-    def __init__(self, listdata, session, **kwargs):
+    def __init__(self, listdata, session: Session, **kwargs):
         super().__init__(
             data=listdata,
             header=self.HEADINGS,
@@ -169,7 +182,7 @@ class ConfigStageTableModel(GenericAttrTableModel):
     ]
     DEFAULT_SORT_COLUMN_NAME = "get_modified_at_pretty"
 
-    def __init__(self, listdata, session, **kwargs):
+    def __init__(self, listdata, session: Session, **kwargs):
         super().__init__(
             data=listdata,
             header=self.HEADINGS,
@@ -186,9 +199,10 @@ class MainWindow(QMainWindow):
     # Don't inherit from QDialog, which has an additional Escape-to-close
     # function that's harder to trap. Use QWidget or QMainWindow.
 
-    exit_kill_log = Signal()
+    exit_kill_log = pyqtSignal()
 
-    def __init__(self, dbsettings):
+    # noinspection PyArgumentList,PyUnresolvedReferences
+    def __init__(self, dbsettings: Dict[str, Any]) -> None:
         super().__init__()
         self.dbsettings = dbsettings
 
@@ -266,10 +280,11 @@ class MainWindow(QMainWindow):
     # Exiting
     # -------------------------------------------------------------------------
 
-    def closeEvent(self, event):
+    # noinspection PyPep8Naming
+    def closeEvent(self, event: QEvent) -> None:
         """Trap exit."""
         quit_msg = "Are you sure you want to exit?"
-        # noinspection PyCallByClass
+        # noinspection PyCallByClass,PyTypeChecker
         reply = QMessageBox.question(self, 'Really exit?', quit_msg,
                                      QMessageBox.Yes, QMessageBox.No)
         if reply != QMessageBox.Yes:
@@ -279,7 +294,7 @@ class MainWindow(QMainWindow):
         if self.task_running:
             quit_msg = ("A TASK IS RUNNING! Are you <b>really</b> sure "
                         "you want to exit?")
-            # noinspection PyCallByClass
+            # noinspection PyCallByClass,PyTypeChecker
             reply = QMessageBox.question(self, 'Really exit?', quit_msg,
                                          QMessageBox.Yes, QMessageBox.No)
             if reply != QMessageBox.Yes:
@@ -294,7 +309,7 @@ class MainWindow(QMainWindow):
             event.accept()  # actually quit
             return
         # Now stop everything
-        log.warn("Waiting for threads to finish...")
+        log.warning("Waiting for threads to finish...")
         self.exit_pending = True
         if self.whisker_owner:
             self.whisker_owner.stop()
@@ -305,8 +320,9 @@ class MainWindow(QMainWindow):
     # Configuration
     # -------------------------------------------------------------------------
 
-    @Slot()
-    def configure(self):
+    # noinspection PyArgumentList
+    @pyqtSlot()
+    def configure(self) -> None:
         readonly = self.anything_running()
         with session_thread_scope(self.dbsettings, readonly) as session:
             w = ConfigPicker(session, readonly=readonly)
@@ -314,7 +330,7 @@ class MainWindow(QMainWindow):
         self.report_selected_config()
         self.set_button_states()
 
-    def report_selected_config(self):
+    def report_selected_config(self) -> None:
         text = "<b>No config selected</b>"
         if self.config_id is not None:
             with session_thread_scope(self.dbsettings,
@@ -328,11 +344,12 @@ class MainWindow(QMainWindow):
     # Task control
     # -------------------------------------------------------------------------
 
+    # noinspection PyArgumentList
     @exit_on_exception
-    @Slot()
-    def start(self):
+    @pyqtSlot()
+    def start(self) -> None:
         if self.anything_running():
-            # noinspection PyCallByClass
+            # noinspection PyCallByClass,PyTypeChecker
             QMessageBox.about(self, "Can't start", "Already running.")
             return
         try:
@@ -355,7 +372,7 @@ class MainWindow(QMainWindow):
         except AttributeError as e:
             traceback.print_exc()
             log.debug("start: error: {}".format(e))
-            # noinspection PyCallByClass
+            # noinspection PyCallByClass,PyTypeChecker
             QMessageBox.about(self, "Can't start",
                               "Failed to start; config not set.")
             return
@@ -367,17 +384,18 @@ class MainWindow(QMainWindow):
         self.whisker_owner.start()
         self.set_button_states()
 
-    @Slot()
-    def stop(self):
+    # noinspection PyArgumentList
+    @pyqtSlot()
+    def stop(self) -> None:
         if not self.anything_running():
-            # noinspection PyCallByClass
+            # noinspection PyCallByClass,PyTypeChecker
             QMessageBox.about(self, "Can't stop",
                               "Nothing to stop: not running.")
             return
         if self.task_running:
             quit_msg = ("A TASK IS RUNNING! Are you <b>really</b> sure "
                         "you want to stop?")
-            # noinspection PyCallByClass
+            # noinspection PyCallByClass,PyTypeChecker
             reply = QMessageBox.question(self, 'Really stop?', quit_msg,
                                          QMessageBox.Yes, QMessageBox.No)
             if reply != QMessageBox.Yes:
@@ -387,8 +405,9 @@ class MainWindow(QMainWindow):
             self.whisker_owner.stop()
         self.set_button_states()
 
-    @Slot()
-    def whisker_owner_finished(self):
+    # noinspection PyArgumentList
+    @pyqtSlot()
+    def whisker_owner_finished(self) -> None:
         self.status("Task finished")
         self.whisker_owner = None
         if self.exit_pending:
@@ -397,21 +416,21 @@ class MainWindow(QMainWindow):
         self.report("Finished.")
         self.set_button_states()
 
-    @Slot()
-    def task_started(self):
+    # noinspection PyArgumentList
+    @pyqtSlot()
+    def task_started(self) -> None:
         self.task_running = True
         self.status("Task now marked as BUSY.")
 
-    def task_finished(self):
+    def task_finished(self) -> None:
         self.task_running = False
         self.status("Task now marked as NOT BUSY.")
 
-    def anything_running(self):
-        """Returns a bool."""
+    def anything_running(self) -> bool:
         return (self.whisker_owner is not None and
                 self.whisker_owner.is_running())
 
-    def set_button_states(self):
+    def set_button_states(self) -> None:
         running = self.anything_running()
         self.configure_button.setText(
             'View configuration'
@@ -426,40 +445,43 @@ class MainWindow(QMainWindow):
     # Status log
     # -------------------------------------------------------------------------
 
-    @Slot(str, str)
-    def on_status(self, msg, source=""):
+    # noinspection PyArgumentList
+    @pyqtSlot(str, str)
+    def on_status(self, msg: str, source: str = "") -> None:
         # http://stackoverflow.com/questions/16568451
         if source:
             msg = "[{}] {}".format(source, msg)
-        for _ in range(1000):
-            self.log.add(msg)
+        self.log.add(msg)
 
-    def status(self, msg):
+    def status(self, msg: str) -> None:
         self.on_status(msg, "main")
 
     # -------------------------------------------------------------------------
     # Status summary
     # -------------------------------------------------------------------------
 
-    def report(self, msg):
+    def report(self, msg: str) -> None:
         self.status_msg.setText(msg)
 
     # -------------------------------------------------------------------------
     # Testing
     # -------------------------------------------------------------------------
 
-    @Slot()
-    def ping_whisker(self):
+    # noinspection PyArgumentList
+    @pyqtSlot()
+    def ping_whisker(self) -> None:
         if self.whisker_owner:
             self.whisker_owner.ping()
 
-    @Slot()
-    def about(self):
-        # noinspection PyCallByClass
+    # noinspection PyArgumentList
+    @pyqtSlot()
+    def about(self) -> None:
+        # noinspection PyCallByClass,PyTypeChecker
         QMessageBox.about(self, WINDOW_TITLE, ABOUT)
 
-    @Slot()
-    def help(self):
+    # noinspection PyArgumentList
+    @pyqtSlot()
+    def help(self) -> None:
         log.info("Help: launching {}".format(MANUAL_FILENAME))
         launch_external_file(MANUAL_FILENAME)
         self.status("Launched {}".format(MANUAL_FILENAME))
@@ -473,7 +495,10 @@ class ConfigPicker(TransactionalDialog):
     """
     Chooses a Config object.
     """
-    def __init__(self, session, parent=None, readonly=False):
+
+    # noinspection PyUnresolvedReferences,PyArgumentList
+    def __init__(self, session: Session, parent: QObject = None,
+                 readonly: bool = False) -> None:
         super().__init__(session=session, readonly=readonly, parent=parent)
         self.session = session
         self.readonly = readonly
@@ -552,7 +577,7 @@ class ConfigPicker(TransactionalDialog):
         self.set_ed_button_states()
         self.set_ro_button_states()
 
-    def exec_(self):
+    def exec_(self) -> int:
         # http://stackoverflow.com/questions/18998010/flake8-complains-on-boolean-comparison-in-filter-clause  # noqa
         ro_configs = self.session.query(Config).filter(
             Config.read_only == False).all()  # noqa
@@ -564,16 +589,16 @@ class ConfigPicker(TransactionalDialog):
         self.ro_tv.setModel(ed_model)
         return super().exec_()
 
-    def exec_returning_config_id(self):
+    def exec_returning_config_id(self) -> Optional[int]:
         result = self.exec_()
         if result != QDialog.Accepted:
             return None
-        obj = self.ed_tv.get_selected_object()
+        obj = self.ed_tv.get_selected_object()  # type: Optional[Config]
         if obj is None:
             return
         return obj.config_id
 
-    def set_ed_button_states(self):
+    def set_ed_button_states(self) -> None:
         selected = self.ed_tv.is_selected()
         self.ed_edit_button.setEnabled(selected)
         self.ed_add_button.setEnabled(not self.readonly)
@@ -581,36 +606,36 @@ class ConfigPicker(TransactionalDialog):
         self.ed_delete_button.setEnabled(selected and not self.readonly)
         self.ok_button.setEnabled(selected)
 
-    def set_ro_button_states(self):
+    def set_ro_button_states(self) -> None:
         selected = self.ro_tv.is_selected()
         self.ro_view_button.setEnabled(selected)
         self.ro_clone_button.setEnabled(selected and not self.readonly)
 
-    def delete_ed(self):
+    def delete_ed(self) -> None:
         self.ed_tv.remove_selected()
 
-    def add_ed(self):
+    def add_ed(self) -> None:
         # TO ADD IMMEDIATELY WITHOUT VALIDATION:
         # self.ed_tv.insert_at_start(Config(), add_to_session=True)
         # TO ADD/VALIDATE TRANSACTIONALLY:
         self.ed_tv.add_in_nested_transaction(Config())
 
-    def edit_view_ed(self):
+    def edit_view_ed(self) -> None:
         self.ed_tv.edit_selected()
 
-    def view_ro(self):
+    def view_ro(self) -> None:
         self.ro_tv.edit_selected()
 
-    def clone_ed(self):
-        obj = self.ed_tv.get_selected_object()
+    def clone_ed(self) -> None:
+        obj = self.ed_tv.get_selected_object()  # type: Optional[Config]
         if obj is None:
             return
         newobj = obj.clone(self.session, read_only=False)
         self.ed_tv.insert_at_start(newobj, add_to_session=True)
         # ... OK to add something to a session twice
 
-    def clone_ro(self):
-        obj = self.ro_tv.get_selected_object()
+    def clone_ro(self) -> None:
+        obj = self.ro_tv.get_selected_object()  # type: Optional[Config]
         if obj is None:
             return
         newobj = obj.clone(self.session, read_only=False)
@@ -622,12 +647,20 @@ class ConfigPicker(TransactionalDialog):
 # Edit main config
 # ============================================================================
 
-class ConfigWindow(QDialog, TransactionalEditDialogMixin):
+class ConfigWindow(TransactionalEditDialogMixin, QDialog):
     """
     Edits a Config object.
     """
-    def __init__(self, session, config, parent=None, readonly=False):
-        super().__init__(parent)  # QDialog
+
+    # noinspection PyUnresolvedReferences,PyArgumentList
+    def __init__(self, session: Session, config: Config,
+                 parent: QObject = None, readonly: bool = False) -> None:
+        main_layout = QVBoxLayout()
+        super().__init__(parent=parent,  # QDialog
+                         session=session,  # TransactionalEditDialogMixin,
+                         obj=config,  # TransactionalEditDialogMixin
+                         layout=main_layout,  # TransactionalEditDialogMixin
+                         readonly=readonly)  # TransactionalEditDialogMixin
         self.session = session
 
         # Title
@@ -716,7 +749,6 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         stages_layout_1.addLayout(stages_layout_2)
         stages_group.setLayout(stages_layout_1)
 
-        main_layout = QVBoxLayout()
         main_layout.addWidget(whisker_group)
         main_layout.addWidget(subject_group)
         main_layout.addWidget(reinf_group)
@@ -724,47 +756,48 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         main_layout.addWidget(overall_limits_group)
         main_layout.addWidget(stages_group)
 
-        # Shared code
-        TransactionalEditDialogMixin.__init__(self, session, config,
-                                              main_layout, readonly=readonly)
-
         self.set_stages_button_states(False, False)
 
-    @Slot()
-    def set_stages_button_states(self, selected, maydelete):
+        # Pass in data
+        self.object_to_dialog(self.obj)
+
+    # noinspection PyArgumentList
+    @pyqtSlot(bool, bool)
+    def set_stages_button_states(self, selected: bool,
+                                 maydelete: bool) -> None:
         if not self.readonly:
             self.stages_remove_button.setEnabled(maydelete)
         self.stages_edit_button.setEnabled(selected)
         self.stages_up_button.setEnabled(selected and not self.readonly)
         self.stages_down_button.setEnabled(selected and not self.readonly)
 
-    def add_stage(self):
+    def add_stage(self) -> None:
         config = ConfigStage(config_id=self.obj.config_id,
                              stagenum=self.obj.get_n_stages() + 1)
         self.stages_lv.add_in_nested_transaction(config)
         self.renumber_refresh()
 
-    def remove_stage(self):
+    def remove_stage(self) -> None:
         self.stages_lv.remove_selected()
         self.renumber_refresh()
 
-    def edit_stage(self):
+    def edit_stage(self) -> None:
         self.stages_lv.edit_selected()
 
-    def stage_up(self):
+    def stage_up(self) -> None:
         self.stages_lv.move_selected_up()
         self.renumber_refresh()
 
-    def stage_down(self):
+    def stage_down(self) -> None:
         self.stages_lv.move_selected_down()
         self.renumber_refresh()
 
-    def renumber_refresh(self):
+    def renumber_refresh(self) -> None:
         for i, stage in enumerate(self.obj.stages):
             stage.stagenum = i + 1
         self.session.flush()
 
-    def object_to_dialog(self, obj):
+    def object_to_dialog(self, obj: Config) -> None:
         self.server_edit.setText(obj.server)
         self.port_edit.setText(str(obj.port or ''))
         self.devicegroup_edit.setText(obj.devicegroup)
@@ -783,7 +816,7 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
         stages_lm = ConfigStageTableModel(obj.stages, self.session)
         self.stages_lv.setModel(stages_lm)
 
-    def dialog_to_object(self, obj):
+    def dialog_to_object(self, obj: Config) -> None:
         # Master config validation and cross-checks.
         # ---------------------------------------------------------------------
         # Basic checks
@@ -853,12 +886,20 @@ class ConfigWindow(QDialog, TransactionalEditDialogMixin):
 # Edit stage
 # =============================================================================
 
-class StageConfigDialog(QDialog, TransactionalEditDialogMixin):
+class StageConfigDialog(TransactionalEditDialogMixin, QDialog):
     """
     Edits a ConfigStage object.
     """
-    def __init__(self, session, stage, parent=None, readonly=False):
-        super().__init__(parent)  # QDialog
+
+    # noinspection PyArgumentList
+    def __init__(self, session: Session, stage: ConfigStage,
+                 parent: QObject = None, readonly: bool = False) -> None:
+        main_layout = QVBoxLayout()
+        super().__init__(parent=parent,  # QDialog
+                         session=session,  # TransactionalEditDialogMixin
+                         obj=stage,  # TransactionalEditDialogMixin
+                         layout=main_layout,  # TransactionalEditDialogMixin
+                         readonly=readonly)  # TransactionalEditDialogMixin
 
         self.setWindowTitle("Configure stage")
 
@@ -886,23 +927,21 @@ class StageConfigDialog(QDialog, TransactionalEditDialogMixin):
         progression_form.addRow("Stop after N trials", self.stop_n_edit)
         progression_group.setLayout(progression_form)
 
-        main_layout = QVBoxLayout()
         main_layout.addWidget(sequence_group)
         main_layout.addWidget(limhold_group)
         main_layout.addWidget(progression_group)
 
-        # Shared code
-        TransactionalEditDialogMixin.__init__(self, session, stage,
-                                              main_layout, readonly=readonly)
+        # Pass in data
+        self.object_to_dialog(self.obj)
 
-    def object_to_dialog(self, obj):
+    def object_to_dialog(self, obj: ConfigStage) -> None:
         self.seqlen_edit.setText(str(obj.sequence_length or ''))
         self.limhold_edit.setText(str(obj.limited_hold_s or ''))
         self.progress_x_edit.setText(str(obj.progression_criterion_x or ''))
         self.progress_y_edit.setText(str(obj.progression_criterion_y or ''))
         self.stop_n_edit.setText(str(obj.stop_after_n_trials or ''))
 
-    def dialog_to_object(self, obj):
+    def dialog_to_object(self, obj: ConfigStage) -> None:
         try:
             obj.sequence_length = int(self.seqlen_edit.text())
             assert 2 <= obj.sequence_length <= N_HOLES

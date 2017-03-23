@@ -6,9 +6,10 @@ import itertools
 import logging
 import os
 # import sys
+from typing import Any, Dict, List, Optional, TextIO
 
 import arrow
-from PySide.QtCore import Signal
+from PyQt5.QtCore import pyqtSignal
 from whisker.api import (
     min_to_ms,
     s_to_ms,
@@ -36,7 +37,7 @@ from whisker_serial_order.constants import (
 from whisker_serial_order.models import (
     Base,
     Config,
-    Session,
+    TaskSession,
     Trial,
     Event,
     TrialPlan,
@@ -68,15 +69,15 @@ class TaskState(Enum):
 # Helper functions
 # =============================================================================
 
-def get_hole_line(h):
+def get_hole_line(h: int) -> str:
     return DEV_DI["HOLE_{}".format(h)]
 
 
-def get_stimlight_line(h):
+def get_stimlight_line(h: int) -> str:
     return DEV_DO["STIMLIGHT_{}".format(h)]
 
 
-def get_response_hole_from_event(ev):
+def get_response_hole_from_event(ev: str) -> Optional[int]:
     """Returns a hole number, or None if it's not a matching event."""
     for h in ALL_HOLE_NUMS:
         if ev == WEV.get('RESPONSE_{}'.format(h), None):
@@ -89,15 +90,15 @@ def get_response_hole_from_event(ev):
 # =============================================================================
 
 class SerialOrderTask(WhiskerTask):
-    task_status_sig = Signal(str)
-    task_started_sig = Signal()
-    task_finished_sig = Signal()
+    task_status_sig = pyqtSignal(str)
+    task_started_sig = pyqtSignal()
+    task_finished_sig = pyqtSignal()
 
     # -------------------------------------------------------------------------
     # Creation, thread startup, shutdown.
     # -------------------------------------------------------------------------
 
-    def __init__(self, dbsettings, config_id):
+    def __init__(self, dbsettings: Dict[str, Any], config_id: int) -> None:
         super().__init__()
         self.dbsettings = dbsettings
         self.config_id = config_id
@@ -118,14 +119,14 @@ class SerialOrderTask(WhiskerTask):
         self.session_time_expired = False
         self.file_written = False
 
-    def thread_started(self):
+    def thread_started(self) -> None:
         log.debug("thread_started")
         self.dbsession = get_database_session_thread_scope(self.dbsettings)
         # ... keep the session running, if we can; simpler
         self.config = self.dbsession.query(Config).get(self.config_id)
 
     @exit_on_exception
-    def stop(self):
+    def stop(self) -> None:
         self.save_to_file()
         self.dbsession.commit()
         self.dbsession.close()
@@ -136,32 +137,33 @@ class SerialOrderTask(WhiskerTask):
     # Shortcuts
     # -------------------------------------------------------------------------
 
-    def cmd(self, *args, **kwargs):
+    def cmd(self, *args, **kwargs) -> None:
         self.whisker.command_exc(*args, **kwargs)
 
-    def timer(self, *args, **kwargs):
+    def timer(self, *args, **kwargs) -> None:
         self.whisker.timer_set_event(*args, **kwargs)
 
-    def cancel_timer(self, event):
+    def cancel_timer(self, event: str) -> None:
         self.whisker.timer_clear_event(event)
 
-    def add_timeout(self, event, duration_ms):
+    def add_timeout(self, event: str, duration_ms: int) -> None:
         self.timer(event, duration_ms)
         self.timeouts.append(event)
 
-    def set_limhold(self, event):
+    def set_limhold(self, event: str) -> None:
         self.add_timeout(event, s_to_ms(self.stage.limited_hold_s))
 
-    def cancel_timeouts(self):
+    def cancel_timeouts(self) -> None:
         for event in self.timeouts:
             self.cancel_timer(event)
         self.timeouts = []
 
-    def report(self, msg):
+    def report(self, msg: str) -> None:
         self.task_status_sig.emit(msg)
 
-    def record_event(self, event, timestamp=None, whisker_timestamp_ms=None,
-                     from_server=False):
+    def record_event(self, event: str, timestamp: arrow.Arrow = None,
+                     whisker_timestamp_ms: int = None,
+                     from_server: bool = False) -> None:
         if timestamp is None:
             timestamp = arrow.now()
         self.eventnum_in_session += 1
@@ -185,7 +187,7 @@ class SerialOrderTask(WhiskerTask):
         self.tasksession.events.append(eventobj)
         log.info(event)
 
-    def create_new_trial(self):
+    def create_new_trial(self) -> None:
         assert self.stagenum is not None
         self.stage = self.config.stages[self.stagenum - 1]
         if self.trial is not None:
@@ -210,7 +212,7 @@ class SerialOrderTask(WhiskerTask):
     # -------------------------------------------------------------------------
 
     @exit_on_exception
-    def on_connect(self):
+    def on_connect(self) -> None:
         self.info("Connected")
         self.whisker.timestamps(True)
         self.whisker.report_name("SerialOrder", VERSION)
@@ -221,7 +223,7 @@ class SerialOrderTask(WhiskerTask):
             self.critical(
                 "Command failed: {}".format(e.args[0] if e.args else '?'))
 
-    def claim(self):
+    def claim(self) -> None:
         self.info("Claiming devices...")
         self.whisker.claim_group(self.config.devicegroup)
         for d in DEV_DI.values():
@@ -232,10 +234,10 @@ class SerialOrderTask(WhiskerTask):
                                     output=True)
         self.info("... devices successfully claimed")
 
-    def start_task(self):
+    def start_task(self) -> None:
         self.task_started_sig.emit()
-        self.tasksession = Session(config_id=self.config_id,
-                                   started_at=arrow.now())
+        self.tasksession = TaskSession(config_id=self.config_id,
+                                       started_at=arrow.now())
         self.dbsession.add(self.tasksession)
         self.whisker.line_set_event(DEV_DI.MAGSENSOR, WEV.MAGPOKE)
         for h in ALL_HOLE_NUMS:
@@ -253,7 +255,7 @@ class SerialOrderTask(WhiskerTask):
     # Event processing
     # -------------------------------------------------------------------------
 
-    def start_new_trial(self):
+    def start_new_trial(self) -> None:
         self.create_new_trial()
         self.record_event(TEV.TRIAL_START)
         self.whisker.line_on(DEV_DO.HOUSELIGHT)
@@ -262,15 +264,16 @@ class SerialOrderTask(WhiskerTask):
         self.state = TaskState.awaiting_initiation
         self.report("Awaiting initiation at food magazine")
 
-    @exit_on_exception  # @Slot(str, arrow.Arrow, int)
-    def on_event(self, event, timestamp, whisker_timestamp_ms):
+    @exit_on_exception  # @pyqtSlot(str, arrow.Arrow, int)
+    def on_event(self, event: str, timestamp: arrow.Arrow,
+                 whisker_timestamp_ms: int) -> None:
         # log.info("SerialOrderTask: on_event: {}".format(event))
         self.record_event(event, timestamp, whisker_timestamp_ms,
                           from_server=True)
         self.event_processor(event, timestamp)
         self.dbsession.commit()
 
-    def event_processor(self, event, timestamp):
+    def event_processor(self, event: str, timestamp: arrow.Arrow) -> None:
         # ---------------------------------------------------------------------
         # Timers
         # ---------------------------------------------------------------------
@@ -345,9 +348,9 @@ class SerialOrderTask(WhiskerTask):
                 self.trial.record_premature(timestamp)
             return
 
-        log.warn("Unknown event received: {}".format(event))
+        log.warning("Unknown event received: {}".format(event))
 
-    def show_next_light(self, timestamp):
+    def show_next_light(self, timestamp: arrow.Arrow) -> None:
         if not self.current_sequence:
             return self.offer_choice(timestamp)
         holenum = self.current_sequence[0]
@@ -362,7 +365,7 @@ class SerialOrderTask(WhiskerTask):
             self.trial.get_sequence_holes_as_str(),
         ))
 
-    def seq_responded_require_next_mag(self, timestamp):
+    def seq_responded_require_next_mag(self, timestamp: arrow.Arrow) -> None:
         self.trial.record_sequence_hole_response(timestamp)
         self.record_event(TEV.REQUIRE_MAGPOKE)
         self.trial.record_sequence_mag_lit(timestamp)
@@ -373,11 +376,11 @@ class SerialOrderTask(WhiskerTask):
         self.state = TaskState.awaiting_foodmag_after_light
         self.report("Awaiting magazine response after response to light")
 
-    def mag_responded_show_next_light(self, timestamp):
+    def mag_responded_show_next_light(self, timestamp: arrow.Arrow) -> None:
         self.trial.record_sequence_mag_response(timestamp)
         self.show_next_light(timestamp)
 
-    def offer_choice(self, timestamp):
+    def offer_choice(self, timestamp: arrow.Arrow) -> None:
         self.record_event(TEV.PRESENT_CHOICE)
         self.trial.record_choice_offered(timestamp)
         self.whisker.line_off(DEV_DO.MAGLIGHT)
@@ -390,7 +393,7 @@ class SerialOrderTask(WhiskerTask):
             self.trial.get_sequence_holes_as_str(),
         ))
 
-    def choice_made(self, response_hole, timestamp):
+    def choice_made(self, response_hole: int, timestamp: arrow.Arrow) -> None:
         self.tasksession.trials_responded += 1
         correct = self.trial.record_response(response_hole, timestamp)
         if correct:
@@ -399,7 +402,7 @@ class SerialOrderTask(WhiskerTask):
         else:
             self.start_iti(timestamp)
 
-    def reinforce(self, timestamp):
+    def reinforce(self, timestamp: arrow.Arrow) -> None:
         self.record_event(TEV.REINFORCE)
         self.trial.record_reinforcement(timestamp)
         self.set_all_hole_lights_off()
@@ -414,7 +417,7 @@ class SerialOrderTask(WhiskerTask):
         self.state = TaskState.reinforcing
         self.report("Reinforcing")
 
-    def reinforcement_delivery_finished(self, timestamp):
+    def reinforcement_delivery_finished(self, timestamp: arrow.Arrow) -> None:
         if self.trial.was_reinf_collected():
             self.start_iti(timestamp)
         else:
@@ -422,7 +425,7 @@ class SerialOrderTask(WhiskerTask):
             self.set_limhold(WEV.TIMEOUT_FOOD_UNCOLLECTED)
             self.report("Awaiting food collection")
 
-    def reinforcement_collected(self, timestamp):
+    def reinforcement_collected(self, timestamp: arrow.Arrow) -> None:
         if self.trial.was_reinf_collected():
             return
         self.trial.record_reinf_collection(timestamp)
@@ -432,7 +435,7 @@ class SerialOrderTask(WhiskerTask):
             self.start_iti(timestamp)
         # ... but if it's iti already, then do nothing
 
-    def start_iti(self, timestamp):
+    def start_iti(self, timestamp: arrow.Arrow) -> None:
         self.record_event(TEV.ITI_START)
         self.trial.record_iti_start(timestamp)
         self.whisker.line_off(DEV_DO.HOUSELIGHT)
@@ -443,7 +446,7 @@ class SerialOrderTask(WhiskerTask):
         self.report("ITI")
         log.info("Starting ITI")
 
-    def iti_finished_end_trial(self):
+    def iti_finished_end_trial(self) -> None:
         self.record_event(TEV.TRIAL_END)
         if self.trial.responded or not self.config.repeat_incomplete_trials:
             if self.trialplans:
@@ -453,7 +456,7 @@ class SerialOrderTask(WhiskerTask):
                 log.warning("Bug? No trial plan to remove.")
         self.decide_re_next_trial()
 
-    def decide_re_next_trial(self):
+    def decide_re_next_trial(self) -> None:
         # Manual way:
         trials_this_stage = self.dbsession.query(Trial)\
             .filter(Trial.session_id == self.tasksession.session_id)\
@@ -488,7 +491,7 @@ class SerialOrderTask(WhiskerTask):
             return self.end_session()
         self.start_new_trial()
 
-    def progress_to_next_stage(self, first=False):
+    def progress_to_next_stage(self, first: bool = False) -> None:
         self.trialplans = []
         if first:
             self.stagenum = 1
@@ -500,7 +503,7 @@ class SerialOrderTask(WhiskerTask):
         else:
             self.start_new_trial()
 
-    def end_session(self):
+    def end_session(self) -> None:
         self.info("Ending session")
         self.record_event(TEV.SESSION_END)
         self.whisker.timer_clear_all_events()
@@ -513,7 +516,7 @@ class SerialOrderTask(WhiskerTask):
         self.report("Finished")
         self.task_finished_sig.emit()
 
-    def abort(self):
+    def abort(self) -> None:
         self.info("Aborting session")
         self.save_to_file()
 
@@ -521,7 +524,7 @@ class SerialOrderTask(WhiskerTask):
     # Device control functions
     # -------------------------------------------------------------------------
 
-    def set_all_hole_lights_off(self):
+    def set_all_hole_lights_off(self) -> None:
         for h in ALL_HOLE_NUMS:
             self.whisker.line_off(get_stimlight_line(h))
 
@@ -529,15 +532,17 @@ class SerialOrderTask(WhiskerTask):
     # Trial planning
     # -------------------------------------------------------------------------
 
-    def get_trial_plan(self, seqlen):
-        if not self.trialplans:
+    def get_trial_plan(self, seqlen: int) -> TrialPlan:
+        # This implements part of a draw-without-replacement system
+        if not self.trialplans:  # we need more!
             self.trialplans = self.create_trial_plans(seqlen)
-        return self.trialplans[0]
-        # removal occurs elsewhere
+        return self.trialplans[0]  # draw one
+        # removal occurs elsewhere - see iti_finished_end_trial()
 
     @staticmethod
-    def create_trial_plans(seqlen):
+    def create_trial_plans(seqlen: int) -> List[TrialPlan]:
         log.info("Generating new trial plans")
+        assert(seqlen >= 2)
         sequences = list(itertools.permutations(ALL_HOLE_NUMS, seqlen))
         serial_order_choices = list(itertools.combinations(
             range(1, seqlen + 1), 2))
@@ -562,7 +567,7 @@ class SerialOrderTask(WhiskerTask):
     # Text-based results save, as SQL
     # -------------------------------------------------------------------------
 
-    def save_to_file(self):
+    def save_to_file(self) -> None:
         if self.file_written:
             return
         if not self.tasksession:
@@ -581,13 +586,14 @@ class SerialOrderTask(WhiskerTask):
         self.info("Writing data to: {}".format(filename))
         try:
             with open(filename, 'w') as fileobj:
+                # noinspection PyTypeChecker
                 self.save_to_sql(fileobj, filename)
             self.file_written = True
         except Exception as e:
             self.critical("Failed to write to {}; exception: {}".format(
                 filename, e))
 
-    def save_to_sql(self, fileobj, filename):
+    def save_to_sql(self, fileobj: TextIO, filename: str) -> None:
         session = self.dbsession
         engine = session.bind
         writelines_nl(fileobj, [

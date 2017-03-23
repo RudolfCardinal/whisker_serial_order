@@ -2,6 +2,7 @@
 # whisker_serial_order/models.py
 
 import logging
+from typing import List, Optional, Tuple
 
 import arrow
 from sqlalchemy import (
@@ -16,7 +17,7 @@ from sqlalchemy import (
     Text,  # variable length
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Session
 from sqlalchemy_utils import (
     # JSONType,
     ScalarListType,
@@ -57,30 +58,58 @@ Base = declarative_base(metadata=MASTER_META)
 # Helper functions/classes
 # =============================================================================
 
-def spatial_to_serial_order(hole_sequence, holes):
+def spatial_to_serial_order(hole_sequence: List[int],
+                            holes: List[int]) -> List[int]:
     return [hole_sequence.index(h) + 1 for h in holes]
 
 
-def serial_order_to_spatial(hole_sequence, seq_positions):
+def serial_order_to_spatial(hole_sequence: List[int],
+                            seq_positions: List[int]) -> List[int]:
     return [hole_sequence[i - 1] for i in seq_positions]
 
 
 class TrialPlan(object):
-    def __init__(self, sequence, serial_order_choice):
+    def __init__(self, sequence: List[int],
+                 serial_order_choice: List[int]) -> None:
         self.sequence = sequence
         self.serial_order_choice = sorted(serial_order_choice)
         self.hole_choice = sorted(
             serial_order_to_spatial(self.sequence, self.serial_order_choice))
 
-    def __repr__(self):
+    @property  # for debugging
+    def correct_incorrect_holes(self) -> Tuple[int, int]:
+        serial_order_of_choice_holes = spatial_to_serial_order(
+            self.sequence, self.hole_choice)
+        if serial_order_of_choice_holes[0] < serial_order_of_choice_holes[1]:
+            return self.hole_choice[0], self.hole_choice[1]
+        else:
+            return self.hole_choice[1], self.hole_choice[0]
+
+    @property  # for debugging
+    def correct_hole(self) -> int:
+        correct, incorrect = self.correct_incorrect_holes
+        return correct
+
+    @property  # for debugging
+    def incorrect_hole(self) -> int:
+        correct, incorrect = self.correct_incorrect_holes
+        return incorrect
+
+    @property  # for debugging
+    def correct_is_on_right(self) -> bool:
+        correct, incorrect = self.correct_incorrect_holes
+        return correct > incorrect
+
+    def __repr__(self) -> str:
         return (
             "TrialPlan(sequence={}, serial_order_choice={}, "
-            "hole_choice={})".format(
-                self.sequence, self.serial_order_choice, self.hole_choice)
+            "hole_choice={} [correct_hole={}, correct_is_on_right={}])".format(
+                self.sequence, self.serial_order_choice, self.hole_choice,
+                self.correct_hole, self.correct_is_on_right)
         )
 
     @property
-    def hole_serial_order_combo(self):
+    def hole_serial_order_combo(self) -> List[int]:
         return self.serial_order_choice + self.hole_choice
 
 
@@ -121,7 +150,7 @@ class Config(SqlAlchemyAttrDictMixin, Base):
     # Overall limits
     session_time_limit_min = Column(Float)
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         """Must be clonable by deepcopy_sqla_object(), so must accept empty
         kwargs."""
         self.read_only = kwargs.pop('read_only', False)
@@ -135,8 +164,9 @@ class Config(SqlAlchemyAttrDictMixin, Base):
                                                    250)
         self.iti_duration_ms = kwargs.pop('iti_duration_ms', 2000)
         self.session_time_limit_min = kwargs.pop('session_time_limit_min', 60)
+        super().__init__(**kwargs)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return (
             "Config {config_id}: subject = {subject}, server = {server}, "
             "devicegroup = {devicegroup}".format(
@@ -147,22 +177,23 @@ class Config(SqlAlchemyAttrDictMixin, Base):
             )
         )
 
-    def get_modified_at_pretty(self):
+    def get_modified_at_pretty(self) -> Optional[str]:
         if self.modified_at is None:
             return None
         return self.modified_at.strftime(DATETIME_FORMAT_PRETTY)
 
-    def clone(self, session, read_only=False):
-        newconfig = deepcopy_sqla_object(self, session, flush=False)
+    def clone(self, session: Session, read_only: bool = False) -> 'Config':
+        newconfig = deepcopy_sqla_object(self, session,
+                                         flush=False)  # type: Config
         # ... will add to session
         newconfig.read_only = read_only
         session.flush()  # but not necessarily commit
         return newconfig
 
-    def get_n_stages(self):
+    def get_n_stages(self) -> int:
         return len(self.stages)
 
-    def has_stages(self):
+    def has_stages(self) -> bool:
         return self.get_n_stages() > 0
 
 
@@ -184,7 +215,7 @@ class ConfigStage(SqlAlchemyAttrDictMixin, Base):
     progression_criterion_y = Column(Integer)
     stop_after_n_trials = Column(Integer)
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         """Must be clonable by deepcopy_sqla_object(), so must accept empty
         kwargs."""
         self.config_id = kwargs.pop('config_id', None)
@@ -198,13 +229,15 @@ class ConfigStage(SqlAlchemyAttrDictMixin, Base):
         # In R: use binom.test(x, y) to get the p value for these.
         # Here, the defaults are such that progression requires p = 0.03857.
         self.stop_after_n_trials = kwargs.pop('stop_after_n_trials', 100)
+        super().__init__(**kwargs)
 
 
 # =============================================================================
 # Session summary details
 # =============================================================================
 
-class Session(SqlAlchemyAttrDictMixin, Base):
+class TaskSession(SqlAlchemyAttrDictMixin, Base):
+    # renamed from Session to avoid confusion with SQLAlchemy Session
     __tablename__ = 'session'
     session_id = Column(Integer, primary_key=True)
     config_id = Column(Integer, ForeignKey('config.config_id'), nullable=False)
@@ -219,12 +252,13 @@ class Session(SqlAlchemyAttrDictMixin, Base):
     trials_responded = Column(Integer, nullable=False, default=0)
     trials_correct = Column(Integer, nullable=False, default=0)
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         self.config_id = kwargs.pop('config_id')
         self.started_at = kwargs.pop('started_at')
         self.trials_responded = 0
         self.trials_correct = 0
         self.software_version = VERSION
+        super().__init__(**kwargs)
 
 
 # =============================================================================
@@ -279,7 +313,7 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
 
     iti_started_at = Column(ArrowMicrosecondType)
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         self.session_id = kwargs.pop('session_id', None)  # may be set later
         self.trialnum = kwargs.pop('trialnum')
         self.started_at = kwargs.pop('started_at')
@@ -287,14 +321,14 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         self.stagenum = kwargs.pop('stagenum')
         self.n_premature = 0
         self.sequence_n_offered = 0
-
         self.sequence_info = None  # current sequence info
+        super().__init__(**kwargs)
 
-    def set_sequence(self, sequence_holes):
+    def set_sequence(self, sequence_holes: List[int]) -> None:
         self.sequence_holes = list(sequence_holes)  # make a copy
         self.sequence_length = len(sequence_holes)
 
-    def set_choice(self, choice_holes):
+    def set_choice(self, choice_holes: List[int]) -> None:
         assert len(choice_holes) == 2
         assert all(x in self.sequence_holes for x in choice_holes)
         # Order choice_holes by sequence_holes:
@@ -311,18 +345,19 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         self.choice_seqpos_latest = self.sequence_holes.index(
             self.choice_hole_latest) + 1  # 1-based
 
-    def get_sequence_holes_as_str(self):
+    def get_sequence_holes_as_str(self) -> str:
         return ",".join(str(x) for x in self.sequence_holes)
 
-    def get_choice_holes_as_str(self):
+    def get_choice_holes_as_str(self) -> str:
         return ",".join(str(x) for x in self.choice_holes)
 
-    def record_initiation(self, timestamp):
+    def record_initiation(self, timestamp: arrow.Arrow) -> None:
         self.initiated_at = timestamp
         self.initiation_latency_s = latency_s(self.started_at,
                                               self.initiated_at)
 
-    def record_sequence_hole_lit(self, timestamp, holenum):
+    def record_sequence_hole_lit(self, timestamp: arrow.Arrow,
+                                 holenum: int) -> None:
         self.sequence_n_offered += 1
         self.sequence_info = SequenceTiming(
             trial_id=self.trial_id,
@@ -332,26 +367,27 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         self.sequence_info.record_hole_lit(timestamp)
         self.sequence_timings.append(self.sequence_info)
 
-    def record_sequence_hole_response(self, timestamp):
+    def record_sequence_hole_response(self, timestamp: arrow.Arrow) -> None:
         if self.sequence_info is None:
             return
         self.sequence_info.record_hole_response(timestamp)
 
-    def record_sequence_mag_lit(self, timestamp):
+    def record_sequence_mag_lit(self, timestamp: arrow.Arrow) -> None:
         if self.sequence_info is None:
             return
         self.sequence_info.record_mag_lit(timestamp)
 
-    def record_sequence_mag_response(self, timestamp):
+    def record_sequence_mag_response(self, timestamp: arrow.Arrow) -> None:
         if self.sequence_info is None:
             return
         self.sequence_info.record_mag_response(timestamp)
 
-    def record_choice_offered(self, timestamp):
+    def record_choice_offered(self, timestamp: arrow.Arrow) -> None:
         self.choice_offered = True
         self.choice_offered_at = timestamp
 
-    def record_response(self, response_hole, timestamp):
+    def record_response(self, response_hole: int,
+                        timestamp: arrow.Arrow) -> bool:
         self.responded = True
         self.responded_at = timestamp
         self.responded_hole = response_hole
@@ -362,26 +398,26 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         return self.response_correct
 
     # noinspection PyUnusedLocal
-    def record_premature(self, timestamp):
+    def record_premature(self, timestamp: arrow.Arrow) -> None:
         self.n_premature += 1
 
-    def record_reinforcement(self, timestamp):
+    def record_reinforcement(self, timestamp: arrow.Arrow) -> None:
         self.reinforced_at = timestamp
 
-    def record_reinf_collection(self, timestamp):
+    def record_reinf_collection(self, timestamp: arrow.Arrow) -> None:
         if self.was_reinf_collected():
             return
         self.reinf_collected_at = timestamp
         self.reinf_collect_latency_s = latency_s(self.responded_at,
                                                  self.reinf_collected_at)
 
-    def was_reinforced(self):
+    def was_reinforced(self) -> bool:
         return self.reinforced_at is not None
 
-    def was_reinf_collected(self):
+    def was_reinf_collected(self) -> bool:
         return self.reinf_collected_at is not None
 
-    def record_iti_start(self, timestamp):
+    def record_iti_start(self, timestamp: arrow.Arrow) -> None:
         self.iti_started_at = timestamp
         # And this one's done...
         self.sequence_info = None
@@ -406,7 +442,7 @@ class Event(SqlAlchemyAttrDictMixin, Base):
     whisker_timestamp_ms = Column(BigInteger)
     from_server = Column(Boolean)
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         self.session_id = kwargs.pop('session_id', None)  # may be set later
         self.eventnum_in_session = kwargs.pop('eventnum_in_session')
         self.trial_id = kwargs.pop('trial_id', None)
@@ -416,6 +452,7 @@ class Event(SqlAlchemyAttrDictMixin, Base):
         self.timestamp = kwargs.pop('timestamp')
         self.whisker_timestamp_ms = kwargs.pop('whisker_timestamp_ms', None)
         self.from_server = kwargs.pop('from_server', False)
+        super().__init__(**kwargs)
 
 
 # =============================================================================
@@ -435,23 +472,24 @@ class SequenceTiming(SqlAlchemyAttrDictMixin, Base):
     mag_response_at = Column(ArrowMicrosecondType)
     mag_response_latency_s = Column(Float)
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         self.trial_id = kwargs.pop('trial_id')
         self.seq_pos = kwargs.pop('seq_pos')
         self.hole_num = kwargs.pop('hole_num')
+        super().__init__(**kwargs)
 
-    def record_hole_lit(self, timestamp):
+    def record_hole_lit(self, timestamp: arrow.Arrow) -> None:
         self.hole_lit_at = timestamp
 
-    def record_hole_response(self, timestamp):
+    def record_hole_response(self, timestamp: arrow.Arrow) -> None:
         self.hole_response_at = timestamp
         self.hole_response_latency_s = latency_s(self.hole_lit_at,
                                                  self.hole_response_at)
 
-    def record_mag_lit(self, timestamp):
+    def record_mag_lit(self, timestamp: arrow.Arrow) -> None:
         self.mag_lit_at = timestamp
 
-    def record_mag_response(self, timestamp):
+    def record_mag_response(self, timestamp: arrow.Arrow) -> None:
         self.mag_response_at = timestamp
         self.mag_response_latency_s = latency_s(self.mag_lit_at,
                                                 self.mag_response_at)
