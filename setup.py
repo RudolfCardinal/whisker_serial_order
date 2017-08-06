@@ -100,13 +100,14 @@ setup(
     install_requires=[
         'alembic==0.8.4',  # migration tool for sqlalchemy
         'arrow==0.10.0',  # better datetime
+        'attrdict==2.0.0',
         'python-dateutil==2.5.1',  # fixed problem with PyInstaller for v2.5.0
         # 'PySide>=1.2.2',  # Python interface to Qt
         'PyQt5==5.8',  # Python interface to Qt
-        'SQLAlchemy==1.0.12',  # SQL Alchemy database interface
+        'SQLAlchemy==1.2.0b2',  # SQL Alchemy database interface
         'sqlalchemy-utils==0.32.13',  # http://sqlalchemy-utils.readthedocs.org/
         'sadisplay==0.4.8',  # SQL Alchemy schema display script
-        'whisker==0.3.7',  # Whisker client library
+        'whisker==1.0.0',  # Whisker client library
 
         # 'mysqlclient',  # MySQL engine (Python 3 replacement for MySQLdb)
         # ... but under Windows, a right pain to install; use

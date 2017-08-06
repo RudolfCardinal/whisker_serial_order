@@ -5,6 +5,14 @@ import logging
 from typing import List, Optional, Tuple
 
 import arrow
+from cardinal_pythonlib.sqlalchemy.alembic_func import (
+    ALEMBIC_NAMING_CONVENTION,
+)
+from cardinal_pythonlib.sqlalchemy.arrow_types import ArrowMicrosecondType
+from cardinal_pythonlib.sqlalchemy.orm_inspect import (
+    deepcopy_sqla_object,
+    SqlAlchemyAttrDictMixin,
+)
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -18,16 +26,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Session
-from sqlalchemy_utils import (
-    # JSONType,
-    ScalarListType,
-)
-from whisker.sqlalchemy import (
-    ALEMBIC_NAMING_CONVENTION,
-    ArrowMicrosecondType,
-    deepcopy_sqla_object,
-    SqlAlchemyAttrDictMixin,
-)
+from sqlalchemy_utils import ScalarListType
 
 from whisker_serial_order.constants import (
     DATETIME_FORMAT_PRETTY,

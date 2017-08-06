@@ -6,7 +6,8 @@ import os
 import subprocess
 import sys
 
-from whisker.logging import configure_logger_for_colour
+from cardinal_pythonlib.logs import configure_logger_for_colour
+
 from whisker_serial_order.constants import DB_URL_ENV_VAR
 
 if sys.version_info[0] < 3:

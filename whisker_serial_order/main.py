@@ -37,19 +37,19 @@ from PyQt5.QtCore import QT_VERSION_STR
 from PyQt5.QtWidgets import QApplication
 import sadisplay
 # from whisker.debug_qt import enable_signal_debugging_simply
-from whisker.logging import (
+from cardinal_pythonlib.logs import (
     configure_logger_for_colour,
     copy_root_log_to_file,
+)
+from cardinal_pythonlib.sqlalchemy.alembic_func import (
+    get_current_and_head_revision,
+    upgrade_database,
 )
 from whisker.qt import (
     LogWindow,
     run_gui,
 )
-from whisker.sqlalchemy import (
-    database_is_sqlite,
-    get_current_and_head_revision,
-    upgrade_database,
-)
+from whisker.sqlalchemy import database_is_sqlite
 import whisker.version
 
 from whisker_serial_order.constants import (

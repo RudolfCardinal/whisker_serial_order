@@ -5,6 +5,8 @@ import logging
 import traceback
 from typing import Any, Dict, Optional
 
+from cardinal_pythonlib.process import launch_external_file
+from cardinal_pythonlib.sqlalchemy.alembic_func import upgrade_database
 from PyQt5.QtCore import (
     QEvent,
     QObject,
@@ -29,7 +31,6 @@ from PyQt5.QtWidgets import (
 )
 from sqlalchemy.orm import Session  # for type hints
 from whisker.exceptions import ValidationError
-from whisker.lang import launch_external_file
 from whisker.qtclient import WhiskerOwner
 from whisker.qt import (
     exit_on_exception,
@@ -42,12 +43,7 @@ from whisker.qt import (
     TransactionalDialog,
     TransactionalEditDialogMixin,
 )
-from whisker.sqlalchemy import (
-    database_is_sqlite,
-    session_thread_scope,
-    upgrade_database,
-)
-
+from whisker.sqlalchemy import database_is_sqlite, session_thread_scope
 from whisker_serial_order.constants import (
     ABOUT,
     ALEMBIC_BASE_DIR,

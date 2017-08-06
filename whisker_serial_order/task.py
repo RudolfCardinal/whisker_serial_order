@@ -5,28 +5,23 @@ from enum import Enum, unique
 import itertools
 import logging
 import os
-# import sys
 from typing import Any, Dict, List, Optional, TextIO
 
 import arrow
-from PyQt5.QtCore import pyqtSignal
-from whisker.api import (
-    min_to_ms,
-    s_to_ms,
-)
-from whisker.exceptions import WhiskerCommandFailed
-from whisker.lang import writelines_nl
-from whisker.qtclient import WhiskerTask
-from whisker.qt import exit_on_exception
-from whisker.random import block_shuffle_by_attr, shuffle_where_equal_by_attr
-from whisker.sqlalchemy import (
+from cardinal_pythonlib.file_io import writelines_nl
+from cardinal_pythonlib.sqlalchemy.dump import (
     dump_connection_info,
     dump_orm_tree_as_insert_sql,
     dump_ddl,
-    get_database_session_thread_scope,
-    sql_comment,
 )
-
+from cardinal_pythonlib.sqlalchemy.sql import sql_comment
+from PyQt5.QtCore import pyqtSignal
+from whisker.api import min_to_ms, s_to_ms
+from whisker.exceptions import WhiskerCommandFailed
+from whisker.qtclient import WhiskerTask
+from whisker.qt import exit_on_exception
+from whisker.random import block_shuffle_by_attr, shuffle_where_equal_by_attr
+from whisker.sqlalchemy import get_database_session_thread_scope
 from whisker_serial_order.constants import (
     ALL_HOLE_NUMS,
     DEV_DI,
