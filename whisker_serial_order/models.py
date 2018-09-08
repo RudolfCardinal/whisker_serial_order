@@ -1,6 +1,22 @@
 #!/usr/bin/env python
 # whisker_serial_order/models.py
 
+"""
+    Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+"""
+
 import logging
 from typing import List, Optional, Tuple
 
@@ -33,7 +49,7 @@ from whisker_serial_order.constants import (
     MAX_EVENT_LENGTH,
 )
 from whisker_serial_order.extra import latency_s
-from whisker_serial_order.version import MAX_VERSION_LENGTH, VERSION
+from whisker_serial_order.version import MAX_VERSION_LENGTH, SERIAL_ORDER_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -102,7 +118,7 @@ class TrialPlan(object):
     def __repr__(self) -> str:
         return (
             "TrialPlan(sequence={}, serial_order_choice={}, "
-            "hole_choice={} [correct_hole={}, correct_is_on_right={}])".format(
+            "hole_choice={}; correct_hole={}, correct_is_on_right={})".format(
                 self.sequence, self.serial_order_choice, self.hole_choice,
                 self.correct_hole, self.correct_is_on_right)
         )
@@ -256,7 +272,7 @@ class TaskSession(SqlAlchemyAttrDictMixin, Base):
         self.started_at = kwargs.pop('started_at')
         self.trials_responded = 0
         self.trials_correct = 0
-        self.software_version = VERSION
+        self.software_version = SERIAL_ORDER_VERSION
         super().__init__(**kwargs)
 
 

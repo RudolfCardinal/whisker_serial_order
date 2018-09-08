@@ -1,13 +1,29 @@
 #!/usr/bin/env python
 # whisker_serial_order/constants.py
 
+"""
+    Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+"""
+
 import os
 import string
 import sys
 
 from attrdict import AttrDict
 
-from whisker_serial_order.version import VERSION
+from whisker_serial_order.version import SERIAL_ORDER_VERSION
 
 LINESEP = "=" * 79
 
@@ -79,7 +95,7 @@ Copyright &copy; 2016-2017 Rudolf Cardinal.
 For licensing details see LICENSE.txt.
 """.format(
     DB_URL_ENV_VAR=DB_URL_ENV_VAR,
-    VERSION=VERSION,
+    VERSION=SERIAL_ORDER_VERSION,
     WHISKER_URL="http://www.whiskercontrol.com/",
 )
 
@@ -94,7 +110,9 @@ if getattr(sys, 'frozen', False):
 else:
     # Running in a normal Python environment.
     CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-MANUAL_FILENAME = os.path.join(CURRENT_DIR, 'MANUAL.pdf')
+# MANUAL_FILENAME = os.path.join(CURRENT_DIR, 'MANUAL.pdf')
+MANUAL_FILENAME = os.path.abspath(os.path.join(
+    CURRENT_DIR, "docs", "build", "html", "index.html"))
 
 
 # =============================================================================

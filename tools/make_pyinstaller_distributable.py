@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 
-from whisker_serial_order.version import VERSION
+from whisker_serial_order.version import SERIAL_ORDER_VERSION
 
 if sys.version_info[0] < 3:
     raise AssertionError("Need Python 3")
@@ -35,7 +35,7 @@ WARNFILE = os.path.join(BUILD_DIR, 'whisker_serial_order',
 ZIPFILEBASE = os.path.join(
     DIST_DIR,
     'whisker_serial_order_{VERSION}_{PLATFORM}'.format(
-        VERSION=VERSION,
+        VERSION=SERIAL_ORDER_VERSION,
         PLATFORM=PLATFORM,
         ZIPEXT=ZIPEXT,
     )

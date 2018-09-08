@@ -2,9 +2,7 @@
 # whisker_serial_order/main.py
 
 """
-Serial order task for Whisker.
-
-    Copyright © 2016-2016 Rudolf Cardinal (rudolf@pobox.com).
+    Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -17,7 +15,6 @@ Serial order task for Whisker.
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
-
 """
 
 # =============================================================================
@@ -75,7 +72,7 @@ from whisker_serial_order.settings import (
     set_output_directory,
 )
 from whisker_serial_order.task import SerialOrderTask
-from whisker_serial_order.version import VERSION
+from whisker_serial_order.version import SERIAL_ORDER_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +87,7 @@ def main() -> int:
     # -------------------------------------------------------------------------
     parser = argparse.ArgumentParser(
         description="whisker_serial_order v{}. Serial order task for "
-        "Whisker.".format(VERSION))
+        "Whisker.".format(SERIAL_ORDER_VERSION))
     parser.add_argument("--logfile", default=None,
                         help="Filename to append log to")
     parser.add_argument('--verbose', '-v', action='count', default=0,
@@ -181,7 +178,7 @@ def main() -> int:
         # Info
         # ---------------------------------------------------------------------
         log.info("whisker_serial_order v{}: Serial order task for Whisker, "
-                 "by Rudolf Cardinal (rudolf@pobox.com)".format(VERSION))
+                 "by Rudolf Cardinal (rudolf@pobox.com)".format(SERIAL_ORDER_VERSION))
         log.debug("args: {}".format(args))
         log.debug("qt_args: {}".format(qt_args))
         log.debug("PyQt version: {}".format(PYQT_VERSION_STR))

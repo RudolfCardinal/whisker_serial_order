@@ -1,0 +1,31 @@
+$ pip install sphinx
+$ cd ~/Documents/code/whisker_serial_order/whisker_serial_order
+$ sphinx-quickstart docs
+    # Separate source and build directories (y/n) [n]:  Y
+    # Name prefix for templates and static dir [_]:     _
+    # Project name:                                     whisker_serial_order
+    # Author name(s):                   Rudolf Cardinal
+    # Project release []:
+    # Project language [en]:            en
+    # Source file suffix [.rst]:        .rst
+    # Name of master document [index]   index
+    # use epub builder [n]?             n
+    # autodoc?                          y
+    # doctest?                          n
+    # intersphinx:                      n
+    # todo:                             y
+    # coverage:                         n
+    # imgmath:                          y   ?
+    # mathjax:                          n
+    # ifconfig:                         n
+    # viewcode:                         y   ?
+    # githubpages:                      n
+    # Create Makefile?                  y
+    # Create Windows command file?      y
+
+$ cd docs
+$ make html
+
+# Now edit docs/source/conf.py:
+
+
