@@ -2,6 +2,8 @@
 # whisker_serial_order/alembic/env.py
 
 """
+===============================================================================
+
     Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +17,8 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
+
+===============================================================================
 """
 
 import logging

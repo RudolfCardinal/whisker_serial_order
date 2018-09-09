@@ -2,6 +2,8 @@
 # whisker_serial_order/constants.py
 
 """
+===============================================================================
+
     Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +17,10 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
+
+===============================================================================
+
+Constants for the serial order task.
 """
 
 import os
@@ -91,7 +97,7 @@ You will also need:
 </ul>
 
 By Rudolf Cardinal (rudolf@pobox.com).<br>
-Copyright &copy; 2016-2017 Rudolf Cardinal.
+Copyright &copy; 2016-2018 Rudolf Cardinal.
 For licensing details see LICENSE.txt.
 """.format(
     DB_URL_ENV_VAR=DB_URL_ENV_VAR,
@@ -121,8 +127,9 @@ MANUAL_FILENAME = os.path.abspath(os.path.join(
 # see http://www.whiskercontrol.com/help/FiveChoice.pdf
 
 N_HOLES = 5
-ALL_HOLE_NUMS = list(range(1, N_HOLES + 1))
-# 1-based for task; 0-based for device definition file
+MIN_HOLE_NUMBER = 1  # 1-based throughout for clarity
+MAX_HOLE_NUMBER = N_HOLES
+ALL_HOLE_NUMS = list(range(MIN_HOLE_NUMBER, MIN_HOLE_NUMBER + N_HOLES))
 
 DEV_DI = AttrDict({  # Digital inputs
     'MAGSENSOR': 'REARPANEL',
@@ -180,3 +187,11 @@ assert max(len(x) for x in TEV.values()) <= MAX_EVENT_LENGTH, (
     "Bug: MAX_EVENT_LENGTH is shorter than some values in TEV")
 assert max(len(x) for x in WEV.values()) <= MAX_EVENT_LENGTH, (
     "Bug: MAX_EVENT_LENGTH is shorter than some values in WEV")
+
+# =============================================================================
+# Task structure
+# =============================================================================
+
+N_HOLES_FOR_CHOICE = 2
+MIN_SEQUENCE_LENGTH = N_HOLES_FOR_CHOICE
+MAX_SEQUENCE_LENGTH = N_HOLES

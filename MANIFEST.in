@@ -26,15 +26,11 @@ include whisker_serial_order/docs/build/html/_sources/safety_data_output.rst.txt
 include whisker_serial_order/docs/build/html/_sources/task_operation.rst.txt
 include whisker_serial_order/docs/build/html/_sources/task_overview.rst.txt
 include whisker_serial_order/docs/build/html/_static/ajax-loader.gif
-include whisker_serial_order/docs/build/html/_static/background_b01.png
 include whisker_serial_order/docs/build/html/_static/basic.css
-include whisker_serial_order/docs/build/html/_static/bizstyle.css
-include whisker_serial_order/docs/build/html/_static/bizstyle.js
+include whisker_serial_order/docs/build/html/_static/classic.css
 include whisker_serial_order/docs/build/html/_static/comment-bright.png
 include whisker_serial_order/docs/build/html/_static/comment-close.png
 include whisker_serial_order/docs/build/html/_static/comment.png
-include whisker_serial_order/docs/build/html/_static/css3-mediaqueries.js
-include whisker_serial_order/docs/build/html/_static/css3-mediaqueries_src.js
 include whisker_serial_order/docs/build/html/_static/doctools.js
 include whisker_serial_order/docs/build/html/_static/documentation_options.js
 include whisker_serial_order/docs/build/html/_static/down-pressed.png
@@ -46,6 +42,7 @@ include whisker_serial_order/docs/build/html/_static/minus.png
 include whisker_serial_order/docs/build/html/_static/plus.png
 include whisker_serial_order/docs/build/html/_static/pygments.css
 include whisker_serial_order/docs/build/html/_static/searchtools.js
+include whisker_serial_order/docs/build/html/_static/sidebar.js
 include whisker_serial_order/docs/build/html/_static/underscore-1.3.1.js
 include whisker_serial_order/docs/build/html/_static/underscore.js
 include whisker_serial_order/docs/build/html/_static/up-pressed.png
@@ -64,3 +61,4 @@ include whisker_serial_order/docs/build/html/search.html
 include whisker_serial_order/docs/build/html/searchindex.js
 include whisker_serial_order/docs/build/html/task_operation.html
 include whisker_serial_order/docs/build/html/task_overview.html
+recursive-exclude *.pyc

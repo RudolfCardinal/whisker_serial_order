@@ -1,4 +1,4 @@
-..  docs/source/databases.rst
+..  whisker_serial_order/docs/source/databases.rst
 
 ..  Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
     .
@@ -43,15 +43,16 @@ of back-end databases. However, some additional constraints apply. These are:
   other tasks write. That’s a very common situation, which argues strongly for
   a formal client/server database.
 
-- In addition, we want to store timestamps to millisecond accuracy. There are a
-  variety of ways of doing this, with and without timezone storage. The only
-  entirely consistent way across databases is to use a textual format (e.g.
-  ISO-8601, such as ``2016-03-02T22:43:03.710817+01:00`` or an equivalent with
-  less punctuation). However, this reduces the ability to perform simple
+- In addition, we want to store timestamps to at least millisecond accuracy.
+  There are a variety of ways of doing this, with and without timezone storage.
+  The only entirely consistent way across databases is to use a textual format
+  (e.g. ISO-8601, such as ``2016-03-02T22:43:03.710817+01:00`` or an equivalent
+  with less punctuation). However, this reduces the ability to perform simple
   arithmetic. For the purposes of behavioural tasks, time differences
   (latencies) are important, and timezones aren’t, so we can use a
   high-precision UTC date/time. This gives us the ``DATETIME(6)`` type in MySQL
-  5.6.4+, or the ``TIMESTAMP`` type in PostgreSQL. More detail below.
+  5.6.4+ (which has microsecond accuracy), or the ``TIMESTAMP`` type in
+  PostgreSQL. (For more detail, see :ref:`Dates and times <dev_date_time>`.)
 
 
 Installing PostgreSQL
@@ -275,8 +276,8 @@ made-up example:
 
 
 
-Schema generation
------------------
+Schema
+------
 
 Try ``whisker_serial_order --help`` to see a few other things it can do. If you
 have Java and the PlantUML .jar file (http://plantuml.com/), you can use the

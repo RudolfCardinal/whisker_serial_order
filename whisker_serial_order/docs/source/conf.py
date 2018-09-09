@@ -1,5 +1,6 @@
-# -*- coding: utf-8 -*-
-#
+#!/usr/bin/env python
+# whisker_serial_order/docs/source/conf.py
+
 # Configuration file for the Sphinx documentation builder.
 #
 # This file does only contain a selection of the most common options. For a
@@ -17,6 +18,7 @@
 # sys.path.insert(0, os.path.abspath('.'))
 
 from whisker_serial_order.version import SERIAL_ORDER_VERSION
+
 
 # -- Project information -----------------------------------------------------
 
@@ -170,3 +172,8 @@ texinfo_documents = [
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = True
+
+# -- Options for autodoc extension -------------------------------------------
+
+autoclass_content = 'both'
+# https://stackoverflow.com/questions/5599254/how-to-use-sphinxs-autodoc-to-document-a-classs-init-self-method  # noqa

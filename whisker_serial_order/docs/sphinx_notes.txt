@@ -29,3 +29,36 @@ $ make html
 # Now edit docs/source/conf.py:
 
 
+Attribute docstrings, e.g.
+
+    def __init__(self):
+        self.a = 5
+        """docstring for a"""
+
+as per
+
+    https://www.python.org/dev/peps/pep-0257/#what-is-a-docstring
+    https://www.python.org/dev/peps/pep-0258/#attribute-docstrings
+
+get reported by Sphinx with "= None", like
+
+    a = None
+
+which is silly; see
+
+    https://stackoverflow.com/questions/9153473/sphinx-values-for-attributes-reported-as-none
+
+but more usefully
+
+    https://stackoverflow.com/questions/10861463/omit-or-format-the-value-of-a-variable-when-documenting-with-sphinx/10870416#10870416
+
+... no, didn't work.
+
+See
+
+    http://www.sphinx-doc.org/en/1.6/ext/example_google.html
+
+    https://stackoverflow.com/questions/8649105/how-to-show-instance-attributes-in-sphinx-doc
+
+    https://sphinxcontrib-napoleon.readthedocs.io/en/latest/
+

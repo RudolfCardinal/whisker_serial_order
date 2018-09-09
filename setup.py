@@ -154,6 +154,13 @@ if getattr(our_args, EXTRAS_ARG):
     extra_files.sort()
     print("EXTRA_FILES: \n{}".format(pformat(extra_files)))
     manifest_lines = ['include ' + x for x in extra_files]
+
+    # manifest_lines.append("recursive-exclude *.pyc")
+    # ... because (2019-09-09) we had a problem with a __pycache__ directory
+    #     for some reason appearing in
+    #     "whisker_serial_order.egg-info/SOURCES.txt".
+    # ... no; was a non-problem; ignore that.
+
     with open(MANIFEST_FILE, 'wt') as manifest:
         manifest.writelines([
             "# This is an AUTOCREATED file, MANIFEST.in; see setup.py and DO "
@@ -219,16 +226,15 @@ setup(
 
     keywords='whisker research control',
 
-    # packages=['whisker_serial_order'],
-    packages=find_packages(),  # finds all the .py files in subdirectories
+    packages=['whisker_serial_order'],
+    # packages=find_packages(),  # finds all the .py files in subdirectories
 
     package_data={
         'whisker_serial_order': [
-            'alembic.*',
+            'alembic.ini',
             'alembic/env.py',
             'alembic/script.py.mako',
-            'alembic/versions/*',
-            'MANUAL.*',
+            'alembic/versions/*.py',
         ],
     },
 

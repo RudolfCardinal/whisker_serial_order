@@ -2,6 +2,8 @@
 # whisker_serial_order/gui.py
 
 """
+===============================================================================
+
     Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +17,11 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
+
+===============================================================================
+
+Graphical user interface (GUI) classes for the serial order task.
+
 """
 
 import logging
@@ -87,6 +94,9 @@ WINDOW_TITLE = 'Serial Order'
 # =============================================================================
 
 class NoDatabaseSpecifiedWindow(QDialog):
+    """
+    Information dialogue: "no database specified".
+    """
     exit_kill_log = pyqtSignal()
 
     # noinspection PyArgumentList,PyUnresolvedReferences
@@ -110,6 +120,9 @@ class NoDatabaseSpecifiedWindow(QDialog):
 
 
 class WrongDatabaseVersionWindow(QDialog):
+    """
+    Dialogue box to report "wrong database version" and offer to upgrade.
+    """
     exit_kill_log = pyqtSignal()
 
     # noinspection PyArgumentList,PyUnresolvedReferences
@@ -161,6 +174,9 @@ class WrongDatabaseVersionWindow(QDialog):
 # =============================================================================
 
 class ConfigTableModel(GenericAttrTableModel):
+    """
+    Qt model for tabular views of the :class:`.Config` class.
+    """
     HEADINGS = [
         ("ID", "config_id"),
         ("Modified", "get_modified_at_pretty",),
@@ -184,6 +200,9 @@ class ConfigTableModel(GenericAttrTableModel):
 
 
 class ConfigStageTableModel(GenericAttrTableModel):
+    """
+    Qt model for tabular views of the :class:`.ConfigStage` class.
+    """
     HEADINGS = [
         ("Stage#", "stagenum"),
         ("Seq.len.", "sequence_length"),
@@ -208,6 +227,9 @@ class ConfigStageTableModel(GenericAttrTableModel):
 # =============================================================================
 
 class MainWindow(QMainWindow):
+    """
+    Main GUI window.
+    """
     # Don't inherit from QDialog, which has an additional Escape-to-close
     # function that's harder to trap. Use QWidget or QMainWindow.
 
@@ -505,7 +527,7 @@ class MainWindow(QMainWindow):
 
 class ConfigPicker(TransactionalDialog):
     """
-    Chooses a Config object.
+    Chooses a :class:`.Config` object.
     """
 
     # noinspection PyUnresolvedReferences,PyArgumentList
@@ -661,7 +683,7 @@ class ConfigPicker(TransactionalDialog):
 
 class ConfigWindow(TransactionalEditDialogMixin, QDialog):
     """
-    Edits a Config object.
+    Edits a :class:`.Config` object.
     """
 
     # noinspection PyUnresolvedReferences,PyArgumentList
@@ -900,7 +922,9 @@ class ConfigWindow(TransactionalEditDialogMixin, QDialog):
 
 class StageConfigDialog(TransactionalEditDialogMixin, QDialog):
     """
-    Edits a ConfigStage object.
+    Edits a :class:`.ConfigStage` object.
+
+    .. todo:: implement hole restrictions, StageConfigDialog
     """
 
     # noinspection PyArgumentList

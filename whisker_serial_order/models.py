@@ -2,6 +2,8 @@
 # whisker_serial_order/models.py
 
 """
+===============================================================================
+
     Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +17,16 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
+
+===============================================================================
+
+SQLAlchemy models and other data storage classes for the serial order task.
+
 """
 
+from argparse import ArgumentTypeError
 import logging
-from typing import List, Optional, Tuple
+from typing import List, Iterable, Optional, Set, Tuple
 
 import arrow
 from cardinal_pythonlib.sqlalchemy.alembic_func import (
@@ -47,6 +55,8 @@ from sqlalchemy_utils import ScalarListType
 from whisker_serial_order.constants import (
     DATETIME_FORMAT_PRETTY,
     MAX_EVENT_LENGTH,
+    MAX_HOLE_NUMBER,
+    MIN_HOLE_NUMBER
 )
 from whisker_serial_order.extra import latency_s
 from whisker_serial_order.version import MAX_VERSION_LENGTH, SERIAL_ORDER_VERSION
@@ -59,6 +69,8 @@ log = logging.getLogger(__name__)
 # =============================================================================
 
 MAX_GENERIC_STRING_LENGTH = 255
+N_HOLES_FOR_CHOICE = 2
+
 
 # =============================================================================
 # SQLAlchemy base.
@@ -75,24 +87,179 @@ Base = declarative_base(metadata=MASTER_META)
 
 def spatial_to_serial_order(hole_sequence: List[int],
                             holes: List[int]) -> List[int]:
+    """
+    :param hole_sequence: ordered list of spatial hole numbers to be presented
+        in the first phase of the task, e.g. [3, 1, 4].
+
+    :param holes: spatial hole numbers to be enquired about: "what was the
+        temporal order of these holes in the first phase?"; e.g. [4, 3].
+
+    :return: list of serial order positions (in this example: [3, 1]).
+    """
+
+    """
+    Converts a temporal sequence of spatial holes
+    Converts the list of spatial holes in use (``hole_sequence``) and the
+    temporal sequence of hole indexes (``holes``) into a sequence of spatial
+    hole numbers.
+    ***
+    """
     return [hole_sequence.index(h) + 1 for h in holes]
 
 
 def serial_order_to_spatial(hole_sequence: List[int],
                             seq_positions: List[int]) -> List[int]:
+    """
+    :param hole_sequence: ordered list of spatial hole numbers to be presented
+        in the first phase of the task, e.g. [3, 1, 4].
+
+    :param seq_positions: list of serial orders, e.g [1, 3] for the first and
+        third in the sequence.
+
+    :return: list of spatial hole numbers (e.g. [3, 4] in this example).
+    """
     return [hole_sequence[i - 1] for i in seq_positions]
 
 
+class TestHoleRestrictions(object):
+    """
+    Class to describe test hole restrictions.
+
+    :ivar permissible_combinations: variable of type ``Set[Tuple[int]]``, where
+        the tuples are sorted sequences of hole numbers. If the set is not
+        empty, then only such combinations are allowed.
+    """
+    DEFAULT_HOLE_SEPARATOR = ","
+    DEFAULT_GROUP_SEPARATOR = ";"  # NB ";" trickier from Bash command line
+
+    def __init__(
+            self,
+            # String-based init:
+            description: str,
+            hole_separator: str = DEFAULT_HOLE_SEPARATOR,
+            group_separator: str = DEFAULT_GROUP_SEPARATOR,
+            # Hole-based init:
+            permissible_combinations: List[List[int]] = None) -> None:
+        """
+        :param description: textual description like "1,3; 2,4" to restrict
+            to the combinations of "hole 1 versus hole 3" and "hole 2 versus
+            hole 4".
+
+        :param hole_separator: string used to separate holes in a group
+            (usually ",").
+
+        :param group_separator: string used to separate groups
+            (usually ";").
+
+        :param permissible_combinations: list of lists of spatial hole numbers,
+            as an alternative to using ``description``. Use one or the other.
+        """
+        def assert_hole_ok(hole_: int) -> None:
+            if not (MIN_HOLE_NUMBER <= hole_ <= MAX_HOLE_NUMBER):
+                raise ArgumentTypeError(
+                    "Bad hole number {} (must be in range {}-{})".format(
+                        hole_, MIN_HOLE_NUMBER, MAX_HOLE_NUMBER))
+
+        if bool(description) == bool(permissible_combinations):
+            raise ArgumentTypeError(
+                "Specify either description or permissible_hole_combinations "
+                "(but not both)"
+            )
+        permissible_combinations = permissible_combinations or []  # type: List[List[int]]  # noqa
+        self.permissible_combinations = set()  # type: Set[Tuple[int]]
+        # NOTE: can't add lists to a set (TypeError: unhashable type: 'list')
+        if description:
+            # Initialize from string
+            for group_string in description.split(group_separator):
+                holes = []  # type: List[int]
+                for hole_string in group_string.split(hole_separator):
+                    try:
+                        hole = int(hole_string.strip())
+                    except (ValueError, TypeError):
+                        raise ArgumentTypeError("Not an integer: {!r}".format(
+                            hole_string))
+                    assert_hole_ok(hole)
+                    holes.append(hole)
+                if len(holes) != N_HOLES_FOR_CHOICE:
+                    raise ArgumentTypeError(
+                        "In description {!r}, hole group {!r} must be of "
+                        "length {}, but isn't".format(
+                            description, group_string, N_HOLES_FOR_CHOICE)
+                    )
+                holes.sort()
+                self.permissible_combinations.add(tuple(holes))
+        else:
+            # Initialize from list of lists of holes
+            for group in permissible_combinations:
+                for hole in group:
+                    if not isinstance(hole, int):
+                        raise ArgumentTypeError(
+                            "Not an integer: {!r}".format(hole))
+                    assert_hole_ok(hole)
+                holes = sorted(group)
+                self.permissible_combinations.add(tuple(holes))
+        # Check values are sensible:
+        for holes in self.permissible_combinations:
+            if len(holes) != len(set(holes)):
+                raise ArgumentTypeError("No duplicates permitted; problem was "
+                                        "{!r}".format(holes))
+
+    def __str__(self) -> str:
+        groupsep = self.DEFAULT_GROUP_SEPARATOR + " "
+        holesep = self.DEFAULT_HOLE_SEPARATOR
+        if self.permissible_combinations:
+            description = groupsep.join(
+                holesep.join(str(h) for h in holes)
+                for holes in sorted(self.permissible_combinations)
+            )
+        else:
+            description = ""
+        return "TestHoleRestrictions({!r})".format(description)
+
+    def permissible(self, test_holes: Iterable[int]):
+        """
+        Is the supplied set of test holes compatible with the restrictions?
+
+        :param test_holes: spatial holes.
+        """
+        if not self.permissible_combinations:
+            # No restrictions; OK
+            return True
+        sorted_holes = tuple(sorted(test_holes))
+        return sorted_holes in self.permissible_combinations
+
+
 class TrialPlan(object):
+    """
+    Describes the planned sequence of holes to be offered, and then holes
+    to be tested, for a single trial.
+
+    :ivar sequence: sequence of 1-based hole numbers to be offered
+
+    :ivar serial_order_choice: serial positions within the offered sequence to
+        offer as choices
+
+    :ivar hole_choice: hole positions to offer for the choice
+    """
     def __init__(self, sequence: List[int],
                  serial_order_choice: List[int]) -> None:
-        self.sequence = sequence
+        """
+        :param sequence: the sequence of hole numbers to be offered (e.g.
+            [3, 4, 1] to present hole 3, hole 4, and hole 1 in that order).
+
+        :param serial_order_choice: the serial order positions to be tested
+            (e.g. [1, 3] for the first and third).
+        """
+        self.sequence = sequence  # type: List[int]
         self.serial_order_choice = sorted(serial_order_choice)
         self.hole_choice = sorted(
             serial_order_to_spatial(self.sequence, self.serial_order_choice))
 
     @property  # for debugging
     def correct_incorrect_holes(self) -> Tuple[int, int]:
+        """
+        :return: a tuple: (correct_hole, incorrect_hole) for the test phase.
+        """
         serial_order_of_choice_holes = spatial_to_serial_order(
             self.sequence, self.hole_choice)
         if serial_order_of_choice_holes[0] < serial_order_of_choice_holes[1]:
@@ -102,16 +269,25 @@ class TrialPlan(object):
 
     @property  # for debugging
     def correct_hole(self) -> int:
+        """
+        :return: The correct hole number, from the test phase.
+        """
         correct, incorrect = self.correct_incorrect_holes
         return correct
 
     @property  # for debugging
     def incorrect_hole(self) -> int:
+        """
+        :return: The incorrect hole number, for the test phase.
+        """
         correct, incorrect = self.correct_incorrect_holes
         return incorrect
 
     @property  # for debugging
     def correct_is_on_right(self) -> bool:
+        """
+        :return: Is the correct hole on the right?
+        """
         correct, incorrect = self.correct_incorrect_holes
         return correct > incorrect
 
@@ -123,9 +299,18 @@ class TrialPlan(object):
                 self.correct_hole, self.correct_is_on_right)
         )
 
-    @property
-    def hole_serial_order_combo(self) -> List[int]:
-        return self.serial_order_choice + self.hole_choice
+    # @property
+    # def hole_serial_order_combo(self) -> List[int]:
+    #     return self.serial_order_choice + self.hole_choice
+
+    def meets_restrictions(
+            self, test_hole_restrictions: TestHoleRestrictions = None) -> bool:
+        """
+        Does the trial plan meet the specified restrictions?
+        """
+        if not test_hole_restrictions:
+            return True
+        return test_hole_restrictions.permissible(self.hole_choice)
 
 
 # =============================================================================
@@ -133,6 +318,9 @@ class TrialPlan(object):
 # =============================================================================
 
 class Config(SqlAlchemyAttrDictMixin, Base):
+    """
+    SQLAlchemy model for the ``config`` table.
+    """
     __tablename__ = 'config'
 
     config_id = Column(Integer, primary_key=True)
@@ -166,8 +354,10 @@ class Config(SqlAlchemyAttrDictMixin, Base):
     session_time_limit_min = Column(Float)
 
     def __init__(self, **kwargs) -> None:
-        """Must be clonable by deepcopy_sqla_object(), so must accept empty
-        kwargs."""
+        """
+        Must be clonable by deepcopy_sqla_object(), so must accept empty
+        kwargs.
+        """
         self.read_only = kwargs.pop('read_only', False)
         self.server = kwargs.pop('server', 'localhost')
         self.port = kwargs.pop('port', 3233)
@@ -193,11 +383,21 @@ class Config(SqlAlchemyAttrDictMixin, Base):
         )
 
     def get_modified_at_pretty(self) -> Optional[str]:
+        """
+        Gets the ``modified_at`` time as a human-readable string.
+        """
         if self.modified_at is None:
             return None
         return self.modified_at.strftime(DATETIME_FORMAT_PRETTY)
 
     def clone(self, session: Session, read_only: bool = False) -> 'Config':
+        """
+        Makes a copy of itself and adds it to the specified SQLAlchemy session.
+
+        :param session: the SQLAlchemy session into which to insert the copy.
+        :param read_only: sets the ``read_only`` property of the copy.
+        :return: the copy.
+        """
         newconfig = deepcopy_sqla_object(self, session,
                                          flush=False)  # type: Config
         # ... will add to session
@@ -206,13 +406,24 @@ class Config(SqlAlchemyAttrDictMixin, Base):
         return newconfig
 
     def get_n_stages(self) -> int:
+        """
+        Returns the number of stages.
+        """
         return len(self.stages)
 
     def has_stages(self) -> bool:
+        """
+        Does the config have at least one stage?
+        """
         return self.get_n_stages() > 0
 
 
 class ConfigStage(SqlAlchemyAttrDictMixin, Base):
+    """
+    SQLAlchemy model for the ``config_stage`` table.
+
+    .. todo:: implement hole restrictions, ConfigStage
+    """
     __tablename__ = 'config_stage'
 
     config_stage_id = Column(Integer, primary_key=True)
@@ -252,7 +463,10 @@ class ConfigStage(SqlAlchemyAttrDictMixin, Base):
 # =============================================================================
 
 class TaskSession(SqlAlchemyAttrDictMixin, Base):
-    # renamed from Session to avoid confusion with SQLAlchemy Session
+    """
+    SQLAlchemy model for the ``session`` table (renamed from ``Session`` to
+    ``TaskSession`` to avoid confusion with SQLAlchemy ``Session``).
+    """
     __tablename__ = 'session'
     session_id = Column(Integer, primary_key=True)
     config_id = Column(Integer, ForeignKey('config.config_id'), nullable=False)
@@ -281,6 +495,9 @@ class TaskSession(SqlAlchemyAttrDictMixin, Base):
 # =============================================================================
 
 class Trial(SqlAlchemyAttrDictMixin, Base):
+    """
+    SQLAlchemy model for the ``trial`` table.
+    """
     __tablename__ = 'trial'
     trial_id = Column(Integer, primary_key=True)
     session_id = Column(Integer, ForeignKey('session.session_id'),
@@ -340,10 +557,20 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         super().__init__(**kwargs)
 
     def set_sequence(self, sequence_holes: List[int]) -> None:
+        """
+        Sets the sequence for the first phase of the trial.
+
+        :param sequence_holes: ordered list of hole numbers.
+        """
         self.sequence_holes = list(sequence_holes)  # make a copy
         self.sequence_length = len(sequence_holes)
 
     def set_choice(self, choice_holes: List[int]) -> None:
+        """
+        Sets the choice holes offered in the second phase of the trial.
+
+        :param choice_holes: a list, of length 2, of the hole numbers.
+        """
         assert len(choice_holes) == 2
         assert all(x in self.sequence_holes for x in choice_holes)
         # Order choice_holes by sequence_holes:
@@ -361,18 +588,30 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
             self.choice_hole_latest) + 1  # 1-based
 
     def get_sequence_holes_as_str(self) -> str:
+        """
+        Returns a CSV string of the sequence holes.
+        """
         return ",".join(str(x) for x in self.sequence_holes)
 
     def get_choice_holes_as_str(self) -> str:
+        """
+        Returns a CSV string of the choice holes.
+        """
         return ",".join(str(x) for x in self.choice_holes)
 
     def record_initiation(self, timestamp: arrow.Arrow) -> None:
+        """
+        Records the time of trial initiation.
+        """
         self.initiated_at = timestamp
         self.initiation_latency_s = latency_s(self.started_at,
                                               self.initiated_at)
 
     def record_sequence_hole_lit(self, timestamp: arrow.Arrow,
                                  holenum: int) -> None:
+        """
+        Records the time and hole number that a sequence hole was illuminated.
+        """
         self.sequence_n_offered += 1
         self.sequence_info = SequenceTiming(
             trial_id=self.trial_id,
@@ -383,43 +622,71 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         self.sequence_timings.append(self.sequence_info)
 
     def record_sequence_hole_response(self, timestamp: arrow.Arrow) -> None:
+        """
+        Records a response to a sequence hole.
+        """
         if self.sequence_info is None:
             return
         self.sequence_info.record_hole_response(timestamp)
 
     def record_sequence_mag_lit(self, timestamp: arrow.Arrow) -> None:
+        """
+        Records illumination of the food magazine during the initial sequence.
+        """
         if self.sequence_info is None:
             return
         self.sequence_info.record_mag_lit(timestamp)
 
     def record_sequence_mag_response(self, timestamp: arrow.Arrow) -> None:
+        """
+        Records a response to the food magazine during the initial sequence.
+        """
         if self.sequence_info is None:
             return
         self.sequence_info.record_mag_response(timestamp)
 
     def record_choice_offered(self, timestamp: arrow.Arrow) -> None:
+        """
+        Records the time that the choice was offered.
+        """
         self.choice_offered = True
         self.choice_offered_at = timestamp
 
     def record_response(self, response_hole: int,
                         timestamp: arrow.Arrow) -> bool:
+        """
+        Records the response during the choice phase.
+        IMPLEMENTS THE KEY TASK RULE: "Which came first?"
+
+        :param response_hole: the hole that the subject responded to
+        :param timestamp: when the response occurred
+        :return: was the response correct?
+        """
         self.responded = True
         self.responded_at = timestamp
         self.responded_hole = response_hole
         self.response_latency_s = latency_s(self.choice_offered_at,
                                             self.responded_at)
-        # IMPLEMENTS THE KEY TASK RULE: "Which came first?"
         self.response_correct = response_hole == self.choice_hole_earliest
         return self.response_correct
 
     # noinspection PyUnusedLocal
     def record_premature(self, timestamp: arrow.Arrow) -> None:
+        """
+        Records a premature response.
+        """
         self.n_premature += 1
 
     def record_reinforcement(self, timestamp: arrow.Arrow) -> None:
+        """
+        Records the delivery of reinforcement.
+        """
         self.reinforced_at = timestamp
 
     def record_reinf_collection(self, timestamp: arrow.Arrow) -> None:
+        """
+        Records when the subject collected reinforcement.
+        """
         if self.was_reinf_collected():
             return
         self.reinf_collected_at = timestamp
@@ -427,12 +694,21 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
                                                  self.reinf_collected_at)
 
     def was_reinforced(self) -> bool:
+        """
+        Was the trial reinforced?
+        """
         return self.reinforced_at is not None
 
     def was_reinf_collected(self) -> bool:
+        """
+        Was reinforcement collected?
+        """
         return self.reinf_collected_at is not None
 
     def record_iti_start(self, timestamp: arrow.Arrow) -> None:
+        """
+        Records the time that the intertrial interval started.
+        """
         self.iti_started_at = timestamp
         # And this one's done...
         self.sequence_info = None
@@ -443,6 +719,9 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
 # =============================================================================
 
 class Event(SqlAlchemyAttrDictMixin, Base):
+    """
+    SQLAlchemy model for the ``event`` table.
+    """
     __tablename__ = 'event'
     event_id = Column(Integer, primary_key=True)
     session_id = Column(Integer, ForeignKey('session.session_id'),
@@ -475,6 +754,9 @@ class Event(SqlAlchemyAttrDictMixin, Base):
 # =============================================================================
 
 class SequenceTiming(SqlAlchemyAttrDictMixin, Base):
+    """
+    SQLAlchemy model for the ``sequence_timing`` table.
+    """
     __tablename__ = 'sequence_timing'
     sequence_timing_id = Column(Integer, primary_key=True)
     trial_id = Column(Integer, ForeignKey('trial.trial_id'), nullable=False)
@@ -494,17 +776,29 @@ class SequenceTiming(SqlAlchemyAttrDictMixin, Base):
         super().__init__(**kwargs)
 
     def record_hole_lit(self, timestamp: arrow.Arrow) -> None:
+        """
+        Records that the hole has been illuminated.
+        """
         self.hole_lit_at = timestamp
 
     def record_hole_response(self, timestamp: arrow.Arrow) -> None:
+        """
+        Records that the hole has been responded to.
+        """
         self.hole_response_at = timestamp
         self.hole_response_latency_s = latency_s(self.hole_lit_at,
                                                  self.hole_response_at)
 
     def record_mag_lit(self, timestamp: arrow.Arrow) -> None:
+        """
+        Records that the food magazine has been illuminated.
+        """
         self.mag_lit_at = timestamp
 
     def record_mag_response(self, timestamp: arrow.Arrow) -> None:
+        """
+        Records that the food magazine has been responded to.
+        """
         self.mag_response_at = timestamp
         self.mag_response_latency_s = latency_s(self.mag_lit_at,
                                                 self.mag_response_at)

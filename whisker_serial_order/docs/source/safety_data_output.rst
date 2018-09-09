@@ -1,4 +1,4 @@
-..  docs/source/safety_data_output.rst.rst
+..  whisker_serial_order/docs/source/safety_data_output.rst.rst
 
 ..  Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
     .

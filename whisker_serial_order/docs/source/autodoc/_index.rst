@@ -1,4 +1,4 @@
-..  whisker_serial_order/docs/source/index.rst
+..  whisker_serial_order/docs/source/autodoc/_index.rst
 
 ..  Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
     .
@@ -15,33 +15,17 @@
     limitations under the License.
 
 
-whisker_serial_order
-====================
+Automatic documentation of source code
+--------------------------------------
 
-Serial order task for Whisker (http://www.whiskercontrol.com/). Referred to as
-SerialOrder in this document. By Rudolf Cardinal (rudolf@pobox.com).
+..  toctree::
+    :maxdepth: 1
 
-
-.. toctree::
-    :maxdepth: 2
-    :caption: Contents:
-
-    installation.rst
-    task_overview.rst
-    command_line_options.rst
-    task_operation.rst
-    device_definitions.rst
-    databases.rst
-    safety_data_output.rst
-    development_notes.rst
-    autodoc/_index.rst
-    changelog.rst
-
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
-
+    constants.rst
+    extra.rst
+    gui.rst
+    main.rst
+    models.rst
+    settings.rst
+    task.rst
+    version.rst

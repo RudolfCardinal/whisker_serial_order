@@ -1,4 +1,4 @@
-..  docs/source/device_definitions.rst
+..  whisker_serial_order/docs/source/device_definitions.rst
 
 ..  Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
     .
@@ -15,8 +15,8 @@
     limitations under the License.
 
 
-Device definitions
-==================
+Whisker device definitions
+==========================
 
 Within the task and its results, holes are numbered from 1–5. Existing Whisker
 tasks (e.g. FiveChoice) use ``HOLE_0`` to ``HOLE_4`` and ``STIMLIGHT_0`` to

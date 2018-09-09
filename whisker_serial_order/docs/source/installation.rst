@@ -1,4 +1,4 @@
-..  docs/source/installation.rst
+..  whisker_serial_order/docs/source/installation.rst
 
 ..  Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
     .

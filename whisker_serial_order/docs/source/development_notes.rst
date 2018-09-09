@@ -1,4 +1,4 @@
-..  docs/source/development_notes.rst
+..  whisker_serial_order/docs/source/development_notes.rst
 
 ..  Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
     .
@@ -21,6 +21,8 @@
 
 Development notes
 =================
+
+.. _dev_date_time:
 
 Dates and times
 ---------------
@@ -109,16 +111,33 @@ cross-refer).
 Trial maths
 -----------
 
-*Definitions.* The number of *k*-permutations from *n* objects: :math:`P(n, k)
-= n! / (n – k)!`. The number of *k*-combinations from *n* objects: :math:`C(n,
-k) = n! / [(n – k)!k!]`.
+*Definitions.*
+
+The number of :math:`k`-permutations from :math:`n` objects:
+
+.. math::
+
+    P(n, k) = n! / (n – k)!
+
+..  See
+    http://anorien.csc.warwick.ac.uk/mirrors/CTAN/info/short-math-guide/short-math-guide.pdf
+    https://www.sharelatex.com/learn/Spacing_in_math_mode
+
+The number of :math:`k`-combinations from :math:`n` objects:
+
+.. math::
+
+    C(n, k) = n! / [(n – k)! k!]
 
 In our situation, we always offer two choices and have five holes available;
 this gives :math:`C(5, 2) = 10` possible spatial choices. For a stimulus
-sequence of length *l*, the number of sequences is :math:`P(5, l)`. The spatial
-choice is not independent of the sequence (e.g. if you present lights 3-1-4 you
-can’t then offer a choice of 2-5). The serial order choice is independent of
-the sequence, and there are :math:`C(l, 2)` of these, as follows:
+sequence of length :math:`l`, the number of sequences is :math:`P(5, l)`. The
+spatial choice is not independent of the sequence (e.g. if you present lights
+3-1-4 you can’t then offer a choice of 2-5). The serial order choice is
+independent of the sequence, and there are :math:`C(l, 2)` of these, as
+follows:
+
+..  No maths inside italics.
 
 .. list-table::
     :header-rows: 1
@@ -126,9 +145,19 @@ the sequence, and there are :math:`C(l, 2)` of these, as follows:
     * - Sequence length :math:`l`
       - Number of possible sequences, :math:`P(5, l)`
       - Number of serial order choices, :math:`C(l, 2)`
-      - Number of spatial choices, :math:`C(5, 2)`; not all available on any
-        given trial
+      - [Less relevant!] Number of spatial choices, :math:`C(5, 2)`; not all
+        available on any given trial
       - Maximum number of independent trial types, :math:`P(5, l)C(l, 2)`
+
+    * - *Example: presenting holes 3-1-4 is a sequence of length 3.*
+      - *Example: with five holes, sequences of length 3 include 1-2-3, 1-2-5,
+        3-2-1.*
+      - *Example: if you presented sequence 3-1-4, then the serial order
+        choices are "1 or 3?", "1 or 4?", "3 or 4?".*
+      - *With five holes, the choices could be presented in holes 1+2, 1+3,
+        ..., 4+5, though not all are possible on a given trial.*
+      - For each of the :math:`P(5, l)` possible sequences, you can offer
+        :math:`C(l, 2)` serial order choices.
 
     * - 2
       - 20
@@ -189,11 +218,11 @@ Therefore our algorithm will be:
 Progression maths
 -----------------
 
-If we progress when *x* of the last *y* trials are performed correctly, then we
-should have some sense that this isn’t going to happen by chance. In R, use
-``binom.test(x, y)`` to get the *p*-value based on the assumption of *P* = 0.5
-for chance (and it is, after all, a two-choice test). The default values are 10
-out of 12, for *p* = 0.03857.
+If we progress when :math:`x` of the last :math:`y` trials are performed
+correctly, then we should have some sense that this isn’t going to happen by
+chance. In R, use ``binom.test(x, y)`` to get the *p*-value based on the
+assumption of *P* = 0.5 for chance (and it is, after all, a two-choice test).
+The default values are 10 out of 12, for *p* = 0.03857.
 
 Trials can also be failed by not responding, affecting the “ignorance ⇒ *P* =
 0.5” assumption, but in a conservative way.
@@ -340,9 +369,7 @@ Or to have the primary process being GUI (``console=False`` and perhaps the
 ``launch_no_console.pyw`` script as per Starfeeder), but have a child
 console [#childconsole]_...
 
-.. todo:: this could be improved
-
-.. todo:: also to do – bug w.r.t. deepcopy() and relationships?
+.. todo:: GUI/console problem could be improved.
 
 
 .. rubric:: Footnotes

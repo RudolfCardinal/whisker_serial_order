@@ -2,6 +2,8 @@
 # whisker_serial_order/settings.py
 
 """
+===============================================================================
+
     Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +17,11 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
+
+===============================================================================
+
+Global settings for the serial order task.
+
 """
 
 import os
@@ -36,19 +43,34 @@ filesettings = {
 
 
 def set_database_url(url: str) -> None:
+    """
+    Sets the global SQLAlchemy database URL.
+
+    :param url: SQLAlchemy URL; see
+        http://docs.sqlalchemy.org/en/latest/core/engines.html
+    """
     global dbsettings
     dbsettings['url'] = url
 
 
 def set_database_echo(echo: bool) -> None:
+    """
+    Sets the global database echo settings (for debugging).
+    """
     global dbsettings
     dbsettings['echo'] = echo
 
 
 def set_output_directory(directory: str) -> None:
+    """
+    Sets the output directory (where the safety copy of data is stored).
+    """
     global filesettings
     filesettings['output_directory'] = directory
 
 
 def get_output_directory() -> str:
+    """
+    Gets the output directory (where the safety copy of data is stored).
+    """
     return filesettings['output_directory']

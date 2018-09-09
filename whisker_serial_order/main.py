@@ -2,6 +2,8 @@
 # whisker_serial_order/main.py
 
 """
+===============================================================================
+
     Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +17,11 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
+
+===============================================================================
+
+Command-line entry point for the serial order task.
+
 """
 
 # =============================================================================
@@ -35,6 +42,7 @@ from PyQt5.QtWidgets import QApplication
 import sadisplay
 # from whisker.debug_qt import enable_signal_debugging_simply
 from cardinal_pythonlib.logs import (
+    main_only_quicksetup_rootlogger,
     configure_logger_for_colour,
     copy_root_log_to_file,
 )
@@ -53,6 +61,7 @@ from whisker_serial_order.constants import (
     ALEMBIC_BASE_DIR,
     ALEMBIC_CONFIG_FILENAME,
     DB_URL_ENV_VAR,
+    MIN_SEQUENCE_LENGTH,
     MSG_DB_ENV_VAR_NOT_SPECIFIED,
     OUTPUT_DIR_ENV_VAR,
     WRONG_DATABASE_VERSION_STUB,
@@ -64,6 +73,7 @@ from whisker_serial_order.gui import (
     WrongDatabaseVersionWindow,
 )
 import whisker_serial_order.models as models
+from whisker_serial_order.models import TestHoleRestrictions
 from whisker_serial_order.settings import (
     dbsettings,
     get_output_directory,
@@ -82,6 +92,11 @@ log = logging.getLogger(__name__)
 # =============================================================================
 
 def main() -> int:
+    """
+    Command-line entry point.
+
+    :return: exit code
+    """
     # -------------------------------------------------------------------------
     # Arguments
     # -------------------------------------------------------------------------
@@ -125,8 +140,18 @@ def main() -> int:
         help="Stem for output filenames (for schema diagrams); default is "
         "'schema'; '.plantuml' and '.png' are appended")
     parser.add_argument(
-        "--testtrialplan", metavar='SEQUENCE_LEN', type=int, default=None,
-        help="Print a test trial plan of the specified sequence length")
+        "--testtrialplan", action="store_true",
+        help="Print a test trial plan of the specified sequence length "
+             "+/- restrictions")
+    parser.add_argument(
+        "--seqlen", metavar='SEQUENCE_LEN', type=int, default=None,
+        help="Sequence length for --testtrialplan")
+    parser.add_argument(
+        "--test_hole_restrictions", metavar='TEST_HOLE_GROUPS',
+        type=TestHoleRestrictions,
+        help="Optional test hole restrictions for --testtrialplan; use "
+             "e.g. '--test_hole_restrictions \"1,2;3,4\"' to restrict the "
+             "test phase to holes 1 v 2 and 3 v 4")
 
     # We could allow extra Qt arguments:
     # args, unparsed_args = parser.parse_known_args()
@@ -153,15 +178,14 @@ def main() -> int:
     # -------------------------------------------------------------------------
     # Logging
     # -------------------------------------------------------------------------
-    rootlogger = logging.getLogger()
     loglevel = logging.DEBUG if args.verbose >= 1 else logging.INFO
-    rootlogger.setLevel(loglevel)
-    configure_logger_for_colour(rootlogger)  # configure root logger
-    logging.getLogger('whisker').setLevel(logging.DEBUG if args.verbose >= 2
-                                          else logging.INFO)
+    main_only_quicksetup_rootlogger(loglevel)
+    logging.getLogger('whisker').setLevel(
+        logging.DEBUG if args.verbose >= 2 else logging.INFO)
     if args.logfile:
         copy_root_log_to_file(args.logfile)
     if args.guilog:
+        rootlogger = logging.getLogger()
         log_window = LogWindow(level=loglevel,
                                window_title=WINDOW_TITLE + " Python log",
                                logger=rootlogger)
@@ -177,8 +201,10 @@ def main() -> int:
         # ---------------------------------------------------------------------
         # Info
         # ---------------------------------------------------------------------
-        log.info("whisker_serial_order v{}: Serial order task for Whisker, "
-                 "by Rudolf Cardinal (rudolf@pobox.com)".format(SERIAL_ORDER_VERSION))
+        log.info(
+            "whisker_serial_order v{}: Serial order task for Whisker, "
+            "by Rudolf Cardinal (rudolf@pobox.com)".format(
+                SERIAL_ORDER_VERSION))
         log.debug("args: {}".format(args))
         log.debug("qt_args: {}".format(qt_args))
         log.debug("PyQt version: {}".format(PYQT_VERSION_STR))
@@ -213,8 +239,13 @@ def main() -> int:
         # Demo trial plan only?
         # ---------------------------------------------------------------------
         if args.testtrialplan:
-            task = SerialOrderTask(dbsettings={}, config_id=-1)
-            tplist = task.create_trial_plans(args.testtrialplan)
+            seqlen = args.seqlen
+            if seqlen is None or seqlen < MIN_SEQUENCE_LENGTH:
+                raise ValueError("--seqlen must be an integer >= {}".format(
+                    MIN_SEQUENCE_LENGTH))
+            tplist = SerialOrderTask.create_trial_plans(
+                seqlen=seqlen,
+                test_hole_restrictions=args.test_hole_restrictions)
             print("""
 Explanation:
 - there are 5 holes, numbered 1-5
@@ -230,8 +261,10 @@ Explanation:
     and was in position 1 in the sequence, and hole 4 was offered in the
     choice phase and was in position 3 in the sequence.
 Hint: use grep to check the output.
-            """)
-            for i, tp in enumerate(tplist):
+
+Test hole restrictions: {}
+            """.format(args.test_hole_restrictions))
+            for i, tp in enumerate(tplist, start=1):
                 print("{}. {}".format(i, tp))
             sys.exit(0)
 

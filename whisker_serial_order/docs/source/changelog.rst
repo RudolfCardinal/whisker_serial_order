@@ -1,4 +1,4 @@
-..  docs/source/changelog.rst
+..  whisker_serial_order/docs/source/changelog.rst
 
 ..  Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
     .
@@ -36,8 +36,10 @@ v0.5.0 – Mar 2017
 - Added more test code (including command-line tests) for trial planning,
   following a query from YC, but this seems fine.
 
-v0.6.0 – IN PROGRESS
---------------------
+v0.6.0 – Sep 2018
+-----------------
+
+**IN PROGRESS**
 
 - Documentation from OpenOffice/PDF to Sphinx/HTML.
 
@@ -46,6 +48,12 @@ v0.6.0 – IN PROGRESS
   - python-dateutil from 2.5.1 to 2.7.3
   - whisker from 1.0.0 to 1.0.3
 
+- ``MAX_VERSION_LENGTH`` set to its proper value of 147.
 
+- Options to restrict the test holes offered. See ``TestHoleRestrictions``.
+
+
+To do
+=====
 
 .. todolist::
