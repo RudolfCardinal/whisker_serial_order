@@ -20,12 +20,11 @@ To install in development mode:
 # http://jtushman.github.io/blog/2013/06/17/sharing-code-across-applications-with-python/  # noqa
 
 import argparse
-from setuptools import find_packages, setup
+from setuptools import setup
 from codecs import open
 import fnmatch
 import os
 from pprint import pformat
-import subprocess
 import sys
 from typing import List
 
@@ -79,12 +78,8 @@ EXTRAS_ARG = 'extras'
 
 # Directories
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))  # .../whisker_serial_order  # noqa
-SERIAL_ORDER_ROOT_DIR = os.path.join(THIS_DIR, "whisker_serial_order")  # .../whisker_serial_order/whisker_serial_order/  # noqa
-DOC_ROOT_DIR = os.path.join(SERIAL_ORDER_ROOT_DIR, "docs")
-DOC_HTML_DIR = os.path.join(DOC_ROOT_DIR, "build", "html")
 
 # Files
-DOCMAKER = os.path.join(DOC_ROOT_DIR, "rebuild_docs.py")
 MANIFEST_FILE = os.path.join(THIS_DIR, 'MANIFEST.in')  # we will write this
 PIP_REQ_FILE = os.path.join(THIS_DIR, 'requirements.txt')
 
@@ -93,16 +88,17 @@ with open(os.path.join(THIS_DIR, 'README.txt'), encoding='utf-8') as f:
     LONG_DESCRIPTION = f.read()
 
 # Package dependencies
-INSTALL_REQUIRES=[
+INSTALL_REQUIRES = [
     'alembic==1.0.0',  # migration tool for sqlalchemy
     'arrow==0.10.0',  # better datetime
     'attrdict==2.0.0',
+    'cardinal_pythonlib==1.0.28',
     'python-dateutil==2.7.3',
     'PyQt5==5.8',  # Python interface to Qt
     'SQLAlchemy==1.2.0b2',  # SQL Alchemy database interface
     'sqlalchemy-utils==0.32.13',  # http://sqlalchemy-utils.readthedocs.org/
     'sadisplay==0.4.8',  # SQL Alchemy schema display script
-    'whisker==1.0.3',  # Whisker client library
+    'whisker==1.1.0',  # Whisker client library
 
     # 'mysqlclient',  # MySQL engine (Python 3 replacement for MySQLdb)
     #       ... but under Windows, a right pain to install; use
@@ -139,16 +135,6 @@ extra_files = []  # type: List[str]
 
 if getattr(our_args, EXTRAS_ARG):
     # Here's where we do the extra stuff.
-
-    # New Sphinx documentation
-    print("Building and copying documentation...")
-    subprocess.call([DOCMAKER])
-
-    # Add files to the distribution
-    add_all_files(DOC_HTML_DIR, extra_files,
-                  absolute=False, include_n_parents=4)
-    # ... magic number! Means that "whisker_serial_order/docs/build/html" is
-    # included.
 
     # Write the manifest.
     extra_files.sort()

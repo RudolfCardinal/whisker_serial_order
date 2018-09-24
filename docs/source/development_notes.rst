@@ -1,4 +1,4 @@
-..  whisker_serial_order/docs/source/development_notes.rst
+..  docs/source/development_notes.rst
 
 ..  Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
     .
@@ -39,8 +39,9 @@ converted to UTC...” [#postgrestimestamp]_. In other words, there’s not much
 choose between PostgreSQL and MySQL on the basis of date/time handling.
 
 Interestingly, on the commercial side, SQL Server 2008+ provides
-``DATETIMEOFFSET``, which preserves timezone information [#sqlserverdatetimeoffset]_, and Oracle has a version
-of ``TIMESTAMP WITH TIME ZONE`` that can preserve timezone information [#oracledatetime]_. Neither
+``DATETIMEOFFSET``, which preserves timezone information
+[#sqlserverdatetimeoffset]_, and Oracle has a version of ``TIMESTAMP WITH TIME
+ZONE`` that can preserve timezone information [#oracledatetime]_. Neither
 PostgreSQL or MySQL appear to have an equivalent; the best they offer is UTC
 high-precision storage (and you could store the timezone of origin separately,
 e.g. with the ``TimezoneType`` from SQLAlchemy-Utils_). I haven’t managed to
@@ -113,7 +114,7 @@ Trial maths
 
 *Definitions.*
 
-The number of :math:`k`-permutations from :math:`n` objects:
+The number of permutations of length :math:`k` from :math:`n` objects:
 
 .. math::
 
@@ -123,7 +124,7 @@ The number of :math:`k`-permutations from :math:`n` objects:
     http://anorien.csc.warwick.ac.uk/mirrors/CTAN/info/short-math-guide/short-math-guide.pdf
     https://www.sharelatex.com/learn/Spacing_in_math_mode
 
-The number of :math:`k`-combinations from :math:`n` objects:
+The number of combinations of length :math:`k` from :math:`n` objects:
 
 .. math::
 

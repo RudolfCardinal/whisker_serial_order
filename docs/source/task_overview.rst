@@ -1,4 +1,4 @@
-..  whisker_serial_order/docs/source/task_overview.rst
+..  docs/source/task_overview.rst
 
 ..  Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
     .

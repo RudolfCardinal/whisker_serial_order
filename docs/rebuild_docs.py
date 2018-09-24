@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# whisker_serial_order/docs/rebuild_docs.py
+# docs/rebuild_docs.py
 
 """
 ===============================================================================

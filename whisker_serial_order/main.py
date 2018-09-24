@@ -40,10 +40,8 @@ from PyQt5.Qt import PYQT_VERSION_STR
 from PyQt5.QtCore import QT_VERSION_STR
 from PyQt5.QtWidgets import QApplication
 import sadisplay
-# from whisker.debug_qt import enable_signal_debugging_simply
 from cardinal_pythonlib.logs import (
     main_only_quicksetup_rootlogger,
-    configure_logger_for_colour,
     copy_root_log_to_file,
 )
 from cardinal_pythonlib.sqlalchemy.alembic_func import (
@@ -73,7 +71,10 @@ from whisker_serial_order.gui import (
     WrongDatabaseVersionWindow,
 )
 import whisker_serial_order.models as models
-from whisker_serial_order.models import TestHoleRestrictions
+from whisker_serial_order.models import (
+    ChoiceHoleRestriction,
+    SerialPosRestriction,
+)
 from whisker_serial_order.settings import (
     dbsettings,
     get_output_directory,
@@ -95,7 +96,8 @@ def main() -> int:
     """
     Command-line entry point.
 
-    :return: exit code
+    Returns:
+        exit code
     """
     # -------------------------------------------------------------------------
     # Arguments
@@ -147,11 +149,24 @@ def main() -> int:
         "--seqlen", metavar='SEQUENCE_LEN', type=int, default=None,
         help="Sequence length for --testtrialplan")
     parser.add_argument(
-        "--test_hole_restrictions", metavar='TEST_HOLE_GROUPS',
-        type=TestHoleRestrictions,
-        help="Optional test hole restrictions for --testtrialplan; use "
-             "e.g. '--test_hole_restrictions \"1,2;3,4\"' to restrict the "
-             "test phase to holes 1 v 2 and 3 v 4")
+        "--choice_hole_restriction", metavar='CHOICE_HOLE_GROUPS',
+        type=ChoiceHoleRestriction,
+        help="Optional choice hole restrictions for --testtrialplan; use "
+             "e.g. '--choice_hole_restriction \"1,2;3,4\"' to restrict the "
+             "choice phase to holes 1 v 2 and 3 v 4")
+    parser.add_argument(
+        "--serial_pos_restriction", metavar='SERIAL_ORDER_POS_GROUPS',
+        type=SerialPosRestriction,
+        help="Optional choice serial order position restrictions for "
+             "--testtrialplan; use e.g. '--serial_pos_restriction "
+             "\"1,2;1,3\"' to restrict the choice phase to serial positions "
+             "1 v 2 and 1 v 3")
+    parser.add_argument(
+        "--side_dwor_multiplier", metavar="SIDE_DWOR_MULTIPLIER",
+        type=int, default=1,
+        help="Draw-without-replacement (DWOR) multiplier for shuffling on the "
+             "basis of whether the left or right side is correct; see docs."
+    )
 
     # We could allow extra Qt arguments:
     # args, unparsed_args = parser.parse_known_args()
@@ -195,7 +210,7 @@ def main() -> int:
     # But from now on, we can trap anything and see it in the GUI log, if
     # enabled, even if we have no console.
 
-    # noinspection PyBroadException
+    # noinspection PyBroadException,PyPep8
     try:
 
         # ---------------------------------------------------------------------
@@ -245,7 +260,10 @@ def main() -> int:
                     MIN_SEQUENCE_LENGTH))
             tplist = SerialOrderTask.create_trial_plans(
                 seqlen=seqlen,
-                test_hole_restrictions=args.test_hole_restrictions)
+                choice_hole_restriction=args.choice_hole_restriction,
+                serial_pos_restriction=args.serial_pos_restriction,
+                side_dwor_multiplier=args.side_dwor_multiplier
+            )
             print("""
 Explanation:
 - there are 5 holes, numbered 1-5
@@ -262,8 +280,12 @@ Explanation:
     choice phase and was in position 3 in the sequence.
 Hint: use grep to check the output.
 
-Test hole restrictions: {}
-            """.format(args.test_hole_restrictions))
+Choice hole restrictions: {chr}
+Serial position restrictions: {spr}
+            """.format(
+                chr=args.choice_hole_restriction,
+                spr=args.serial_pos_restriction,
+            ))
             for i, tp in enumerate(tplist, start=1):
                 print("{}. {}".format(i, tp))
             sys.exit(0)

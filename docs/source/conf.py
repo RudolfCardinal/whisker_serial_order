@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# whisker_serial_order/docs/source/conf.py
+# docs/source/conf.py
 
 # Configuration file for the Sphinx documentation builder.
 #
@@ -23,7 +23,8 @@ from whisker_serial_order.version import SERIAL_ORDER_VERSION
 # -- Project information -----------------------------------------------------
 
 project = 'whisker_serial_order'
-copyright = '2018, Rudolf Cardinal'
+# noinspection PyShadowingBuiltins
+copyright = '2016-2018, Rudolf Cardinal'
 author = 'Rudolf Cardinal'
 
 # The short X.Y version
@@ -46,6 +47,7 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.imgmath',
     'sphinx.ext.viewcode',
+    'sphinx.ext.napoleon',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -139,7 +141,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'whisker_serial_order.tex', 'whisker\\_serial\\_order Documentation',
+    (master_doc, 'whisker_serial_order.tex', 'whisker\\_serial\\_order Documentation',  # noqa
      'Rudolf Cardinal', 'manual'),
 ]
 

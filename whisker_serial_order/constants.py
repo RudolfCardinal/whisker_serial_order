@@ -108,18 +108,19 @@ For licensing details see LICENSE.txt.
 DATETIME_FORMAT_PRETTY = "%Y-%m-%d %H:%M:%S"
 
 # Where's the manual?
-if getattr(sys, 'frozen', False):
-    # Running inside a PyInstaller bundle.
-    # http://pythonhosted.org/PyInstaller/#run-time-operation
-    # noinspection PyProtectedMember,PyUnresolvedReferences
-    CURRENT_DIR = sys._MEIPASS
-else:
-    # Running in a normal Python environment.
-    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-# MANUAL_FILENAME = os.path.join(CURRENT_DIR, 'MANUAL.pdf')
-MANUAL_FILENAME = os.path.abspath(os.path.join(
-    CURRENT_DIR, "docs", "build", "html", "index.html"))
+# if getattr(sys, 'frozen', False):
+#     # Running inside a PyInstaller bundle.
+#     # http://pythonhosted.org/PyInstaller/#run-time-operation
+#     # noinspection PyProtectedMember,PyUnresolvedReferences
+#     CURRENT_DIR = sys._MEIPASS
+# else:
+#     # Running in a normal Python environment.
+#     CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+# # MANUAL_FILENAME = os.path.join(CURRENT_DIR, 'MANUAL.pdf')
+# MANUAL_FILENAME = os.path.abspath(os.path.join(
+#     CURRENT_DIR, "docs", "build", "html", "index.html"))
 
+DOCUMENTATION_URL = "https://whiskerserialorder.readthedocs.io/"
 
 # =============================================================================
 # Whisker devices (DI = digital in; DO = digital out)
@@ -195,3 +196,5 @@ assert max(len(x) for x in WEV.values()) <= MAX_EVENT_LENGTH, (
 N_HOLES_FOR_CHOICE = 2
 MIN_SEQUENCE_LENGTH = N_HOLES_FOR_CHOICE
 MAX_SEQUENCE_LENGTH = N_HOLES
+MIN_SERIAL_ORDER_POSITION = 1  # by definition; 1-based
+MAX_SERIAL_ORDER_POSITION = MAX_SEQUENCE_LENGTH

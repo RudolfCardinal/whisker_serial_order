@@ -26,7 +26,7 @@ SQLAlchemy models and other data storage classes for the serial order task.
 
 from argparse import ArgumentTypeError
 import logging
-from typing import List, Iterable, Optional, Set, Tuple
+from typing import Any, List, Iterable, Optional, Set, Tuple
 
 import arrow
 from cardinal_pythonlib.sqlalchemy.alembic_func import (
@@ -48,18 +48,25 @@ from sqlalchemy import (
     String,  # variable length in PostgreSQL; specify length for MySQL
     Text,  # variable length
 )
+from sqlalchemy.engine.default import DefaultDialect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Session
+from sqlalchemy.sql.type_api import TypeDecorator
 from sqlalchemy_utils import ScalarListType
 
 from whisker_serial_order.constants import (
     DATETIME_FORMAT_PRETTY,
     MAX_EVENT_LENGTH,
     MAX_HOLE_NUMBER,
-    MIN_HOLE_NUMBER
+    MIN_HOLE_NUMBER,
+    MIN_SERIAL_ORDER_POSITION,
+    MAX_SERIAL_ORDER_POSITION,
 )
 from whisker_serial_order.extra import latency_s
-from whisker_serial_order.version import MAX_VERSION_LENGTH, SERIAL_ORDER_VERSION
+from whisker_serial_order.version import (
+    MAX_VERSION_LENGTH,
+    SERIAL_ORDER_VERSION,
+)
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +76,7 @@ log = logging.getLogger(__name__)
 # =============================================================================
 
 MAX_GENERIC_STRING_LENGTH = 255
+MAX_HOLE_OR_SERIALPOS_PAIR_DEFINITION_STRING_LENGTH = 255  # more than enough!
 N_HOLES_FOR_CHOICE = 2
 
 
@@ -88,21 +96,22 @@ Base = declarative_base(metadata=MASTER_META)
 def spatial_to_serial_order(hole_sequence: List[int],
                             holes: List[int]) -> List[int]:
     """
-    :param hole_sequence: ordered list of spatial hole numbers to be presented
-        in the first phase of the task, e.g. [3, 1, 4].
+    Converts a temporal sequence of spatial holes into a list of serial
+    order positions.
 
-    :param holes: spatial hole numbers to be enquired about: "what was the
-        temporal order of these holes in the first phase?"; e.g. [4, 3].
-
-    :return: list of serial order positions (in this example: [3, 1]).
-    """
-
-    """
-    Converts a temporal sequence of spatial holes
     Converts the list of spatial holes in use (``hole_sequence``) and the
     temporal sequence of hole indexes (``holes``) into a sequence of spatial
     hole numbers.
-    ***
+
+    Args:
+        hole_sequence: ordered list of spatial hole numbers to be presented
+            in the first phase of the task, e.g. [3, 1, 4].
+
+        holes: spatial hole numbers to be enquired about: "what was the
+            temporal order of these holes in the first phase?"; e.g. [4, 3].
+
+    Returns:
+         list of serial order positions (in this example: [3, 1]).
     """
     return [hole_sequence.index(h) + 1 for h in holes]
 
@@ -110,20 +119,25 @@ def spatial_to_serial_order(hole_sequence: List[int],
 def serial_order_to_spatial(hole_sequence: List[int],
                             seq_positions: List[int]) -> List[int]:
     """
-    :param hole_sequence: ordered list of spatial hole numbers to be presented
-        in the first phase of the task, e.g. [3, 1, 4].
+    Converts a first-phase hole sequence and a list of serial order positions
+    (at the choice phase) into a list of spatial holes at test.
 
-    :param seq_positions: list of serial orders, e.g [1, 3] for the first and
-        third in the sequence.
+    Args:
+        hole_sequence: ordered list of spatial hole numbers to be presented
+            in the first phase of the task, e.g. [3, 1, 4].
 
-    :return: list of spatial hole numbers (e.g. [3, 4] in this example).
+        seq_positions: list of serial orders, e.g [1, 3] for the first and
+            third in the sequence.
+
+    Returns:
+         list of spatial hole numbers (e.g. [3, 4] in this example).
     """
     return [hole_sequence[i - 1] for i in seq_positions]
 
 
-class TestHoleRestrictions(object):
+class ChoiceHoleRestriction(object):
     """
-    Class to describe test hole restrictions.
+    Class to describe choice hole restrictions.
 
     :ivar permissible_combinations: variable of type ``Set[Tuple[int]]``, where
         the tuples are sorted sequences of hole numbers. If the set is not
@@ -135,24 +149,30 @@ class TestHoleRestrictions(object):
     def __init__(
             self,
             # String-based init:
-            description: str,
+            description: str = "",
             hole_separator: str = DEFAULT_HOLE_SEPARATOR,
             group_separator: str = DEFAULT_GROUP_SEPARATOR,
             # Hole-based init:
             permissible_combinations: List[List[int]] = None) -> None:
         """
-        :param description: textual description like "1,3; 2,4" to restrict
-            to the combinations of "hole 1 versus hole 3" and "hole 2 versus
-            hole 4".
+        Args:
 
-        :param hole_separator: string used to separate holes in a group
-            (usually ",").
+            description: textual description like "1,3; 2,4" to restrict
+                to the combinations of "hole 1 versus hole 3" and "hole 2 versus
+                hole 4".
 
-        :param group_separator: string used to separate groups
-            (usually ";").
+            hole_separator: string used to separate holes in a group
+                (usually ",").
 
-        :param permissible_combinations: list of lists of spatial hole numbers,
-            as an alternative to using ``description``. Use one or the other.
+            group_separator: string used to separate groups
+                (usually ";").
+
+            permissible_combinations: list of lists of spatial hole numbers,
+                as an alternative to using ``description``. Use one or the
+                other.
+
+        Raises:
+            argparse.ArgumentTypeError: if its arguments are invalid.
         """
         def assert_hole_ok(hole_: int) -> None:
             if not (MIN_HOLE_NUMBER <= hole_ <= MAX_HOLE_NUMBER):
@@ -160,10 +180,10 @@ class TestHoleRestrictions(object):
                     "Bad hole number {} (must be in range {}-{})".format(
                         hole_, MIN_HOLE_NUMBER, MAX_HOLE_NUMBER))
 
-        if bool(description) == bool(permissible_combinations):
+        if description and permissible_combinations:
             raise ArgumentTypeError(
-                "Specify either description or permissible_hole_combinations "
-                "(but not both)"
+                "Specify description or permissible_combinations, "
+                "but not both"
             )
         permissible_combinations = permissible_combinations or []  # type: List[List[int]]  # noqa
         self.permissible_combinations = set()  # type: Set[Tuple[int]]
@@ -188,7 +208,7 @@ class TestHoleRestrictions(object):
                     )
                 holes.sort()
                 self.permissible_combinations.add(tuple(holes))
-        else:
+        elif permissible_combinations:
             # Initialize from list of lists of holes
             for group in permissible_combinations:
                 for hole in group:
@@ -204,29 +224,319 @@ class TestHoleRestrictions(object):
                 raise ArgumentTypeError("No duplicates permitted; problem was "
                                         "{!r}".format(holes))
 
-    def __str__(self) -> str:
+    def description(self) -> str:
+        """
+        Returns the description that can be used to recreate this object.
+        """
         groupsep = self.DEFAULT_GROUP_SEPARATOR + " "
         holesep = self.DEFAULT_HOLE_SEPARATOR
         if self.permissible_combinations:
-            description = groupsep.join(
+            return groupsep.join(
                 holesep.join(str(h) for h in holes)
                 for holes in sorted(self.permissible_combinations)
             )
-        else:
-            description = ""
-        return "TestHoleRestrictions({!r})".format(description)
+        return ""
 
-    def permissible(self, test_holes: Iterable[int]):
+    def __str__(self) -> str:
+        return "ChoiceHoleRestriction({!r})".format(self.description())
+
+    def permissible(self, choice_holes: Iterable[int]) -> bool:
         """
-        Is the supplied set of test holes compatible with the restrictions?
+        Is the supplied list of choice holes compatible with the restrictions?
 
-        :param test_holes: spatial holes.
+        Args:
+            choice_holes: list of spatial holes.
         """
         if not self.permissible_combinations:
             # No restrictions; OK
             return True
-        sorted_holes = tuple(sorted(test_holes))
+        sorted_holes = tuple(sorted(choice_holes))
         return sorted_holes in self.permissible_combinations
+
+
+class ChoiceHoleRestrictionType(TypeDecorator):
+    """
+    SQLAlchemy data type to store :class:`.ChoiceHoleRestriction` in a
+    database. See http://docs.sqlalchemy.org/en/latest/core/custom_types.html.
+    """
+    impl = String(length=MAX_HOLE_OR_SERIALPOS_PAIR_DEFINITION_STRING_LENGTH)
+
+    def process_bind_param(
+            self, value: Any,
+            dialect: DefaultDialect) -> Optional[str]:
+        """
+        Converts a bound Python parameter to the database value.
+
+        Args:
+            value: should be a :class:`.ChoiceHoleRestriction` or None
+            dialect: SQLAlchemy database dialect.
+
+        Returns:
+            string (outbound to database)
+        """
+        if not value:
+            return value
+        if not isinstance(value, ChoiceHoleRestriction):
+            raise ValueError("Bad object arriving at "
+                             "ChoiceHoleRestrictionType.process_bind_param: "
+                             "{!r}".format(value))
+        return value.description()
+
+    def process_result_value(
+            self, value: Any,
+            dialect: DefaultDialect) -> Optional[ChoiceHoleRestriction]:
+        """
+        Receive a result-row column value to be converted.
+
+        Args:
+
+            value: data fetched from the database (will be a string).
+            dialect: SQLAlchemy database dialect.
+
+        Returns:
+
+            a :class:`.ChoiceHoleRestriction` object if the string is valid
+        """
+        if not value:
+            return None
+        try:
+            return ChoiceHoleRestriction(description=value)
+        except ArgumentTypeError:
+            log.debug("Bad value received from database to "
+                      "ChoiceHoleRestrictionType.process_result_value: "
+                      "{!r}".format(value))
+            return None
+
+    def process_literal_param(self, value: Any, dialect: DefaultDialect) -> str:
+        """
+        Receive a literal parameter value to be rendered inline within
+        a statement.
+
+        (An abstract method of ``TypeDecorator``, so we should implement it.)
+
+        Args:
+            value: a Python value
+            dialect: SQLAlchemy database dialect.
+
+        Returns:
+            a string to be baked into some SQL
+        """
+        return str(value)
+
+    @property
+    def python_type(self) -> type:
+        """
+        Returns the Python type object expected to be returned by instances of
+        this type, if known. It's :class:`.ChoiceHoleRestriction`.
+        """
+        return ChoiceHoleRestriction
+
+
+class SerialPosRestriction(object):
+    """
+    Class to describe restrictions on the serial order positions offered at
+    the choice phase.
+
+    :ivar permissible_combinations: variable of type ``Set[Tuple[int]]``, where
+        the tuples are sorted sequences of serial order position numbers (1
+        being the first). If the set is not empty, then only such combinations
+        are allowed.
+    """
+    DEFAULT_POS_SEPARATOR = ","
+    DEFAULT_GROUP_SEPARATOR = ";"  # NB ";" trickier from Bash command line
+
+    def __init__(
+            self,
+            # String-based init:
+            description: str = "",
+            position_separator: str = DEFAULT_POS_SEPARATOR,
+            group_separator: str = DEFAULT_GROUP_SEPARATOR,
+            # Hole-based init:
+            permissible_combinations: List[List[int]] = None) -> None:
+        """
+        Args:
+
+            description: textual description like "1,3; 2,3" to restrict
+                to the combinations of "serial position 1 versus 3" and "serial
+                position 2 versus 3".
+
+            position_separator: string used to separate positions
+                (usually ",").
+
+            group_separator: string used to separate groups
+                (usually ";").
+
+            permissible_combinations: list of lists of serial order positions,
+                as an alternative to using ``description``. Use one or the
+                other.
+
+        Raises:
+            argparse.ArgumentTypeError: if its arguments are invalid.
+        """
+        def assert_position_ok(pos_: int) -> None:
+            if not (MIN_SERIAL_ORDER_POSITION <= pos_ <=
+                    MAX_SERIAL_ORDER_POSITION):
+                raise ArgumentTypeError(
+                    "Bad serial order position {} (must be in range "
+                    "{}-{})".format(pos_, MIN_SERIAL_ORDER_POSITION,
+                                    MAX_SERIAL_ORDER_POSITION))
+
+        if description and permissible_combinations:
+            raise ArgumentTypeError(
+                "Specify description or permissible_combinations, "
+                "but not both"
+            )
+        permissible_combinations = permissible_combinations or []  # type: List[List[int]]  # noqa
+        self.permissible_combinations = set()  # type: Set[Tuple[int]]
+        # NOTE: can't add lists to a set (TypeError: unhashable type: 'list')
+        if description:
+            # Initialize from string
+            for group_string in description.split(group_separator):
+                positions = []  # type: List[int]
+                for pos_string in group_string.split(position_separator):
+                    try:
+                        pos = int(pos_string.strip())
+                    except (ValueError, TypeError):
+                        raise ArgumentTypeError("Not an integer: {!r}".format(
+                            pos_string))
+                    assert_position_ok(pos)
+                    positions.append(pos)
+                if len(positions) != N_HOLES_FOR_CHOICE:
+                    raise ArgumentTypeError(
+                        "In description {!r}, position group {!r} must be of "
+                        "length {}, but isn't".format(
+                            description, group_string, N_HOLES_FOR_CHOICE)
+                    )
+                positions.sort()
+                self.permissible_combinations.add(tuple(positions))
+        elif permissible_combinations:
+            # Initialize from list of lists of holes
+            for group in permissible_combinations:
+                for pos in group:
+                    if not isinstance(pos, int):
+                        raise ArgumentTypeError(
+                            "Not an integer: {!r}".format(pos))
+                    assert_position_ok(pos)
+                positions = sorted(group)
+                self.permissible_combinations.add(tuple(positions))
+        # Check values are sensible:
+        for positions in self.permissible_combinations:
+            if len(positions) != len(set(positions)):
+                raise ArgumentTypeError("No duplicates permitted; problem was "
+                                        "{!r}".format(positions))
+
+    def description(self) -> str:
+        """
+        Returns the description that can be used to recreate this object.
+        """
+        groupsep = self.DEFAULT_GROUP_SEPARATOR + " "
+        pos_sep = self.DEFAULT_POS_SEPARATOR
+        if self.permissible_combinations:
+            return groupsep.join(
+                pos_sep.join(str(h) for h in holes)
+                for holes in sorted(self.permissible_combinations)
+            )
+        return ""
+
+    def __str__(self) -> str:
+        return "SerialPosRestriction({!r})".format(self.description())
+
+    def permissible(self, serial_positions: Iterable[int]) -> bool:
+        """
+        Is the supplied list of serial order position to be tested compatible
+        with the restrictions?
+
+        Args:
+            serial_positions: the serial order positions to be presented in
+                the choice phase
+        """
+        if not self.permissible_combinations:
+            # No restrictions; OK
+            return True
+        sorted_positions = tuple(sorted(serial_positions))
+        return sorted_positions in self.permissible_combinations
+
+
+class SerialPosRestrictionType(TypeDecorator):
+    """
+    SQLAlchemy data type to store :class:`.SerialPosRestriction` in a
+    database. See http://docs.sqlalchemy.org/en/latest/core/custom_types.html.
+    """
+    impl = String(length=MAX_HOLE_OR_SERIALPOS_PAIR_DEFINITION_STRING_LENGTH)
+
+    def process_bind_param(
+            self, value: Any,
+            dialect: DefaultDialect) -> Optional[str]:
+        """
+        Converts a bound Python parameter to the database value.
+
+        Args:
+            value: should be a :class:`SerialPosRestriction` or None
+            dialect: SQLAlchemy database dialect.
+
+        Returns:
+            string (outbound to database)
+        """
+        if not value:
+            return value
+        if not isinstance(value, SerialPosRestriction):
+            raise ValueError(
+                "Bad object arriving at "
+                "SerialPosRestrictionType.process_bind_param: "
+                "{!r}".format(value))
+        return value.description()
+
+    def process_result_value(
+            self, value: Any,
+            dialect: DefaultDialect) \
+            -> Optional[SerialPosRestriction]:
+        """
+        Receive a result-row column value to be converted.
+
+        Args:
+
+            value: data fetched from the database (will be a string).
+            dialect: SQLAlchemy database dialect.
+
+        Returns:
+
+            a :class:`.SerialPosRestriction` object if the string
+            is valid
+        """
+        if not value:
+            return None
+        try:
+            return SerialPosRestriction(description=value)
+        except ArgumentTypeError:
+            log.debug(
+                "Bad value received from database to "
+                "SerialPosRestrictionType.process_result_value: "
+                "{!r}".format(value))
+            return None
+
+    def process_literal_param(self, value: Any, dialect: DefaultDialect) -> str:
+        """
+        Receive a literal parameter value to be rendered inline within
+        a statement.
+
+        (An abstract method of ``TypeDecorator``, so we should implement it.)
+
+        Args:
+            value: a Python value
+            dialect: SQLAlchemy database dialect.
+
+        Returns:
+            a string to be baked into some SQL
+        """
+        return str(value)
+
+    @property
+    def python_type(self) -> type:
+        """
+        Returns the Python type object expected to be returned by instances of
+        this type, if known. It's :class:`.SerialPosRestriction`.
+        """
+        return SerialPosRestriction
 
 
 class TrialPlan(object):
@@ -237,18 +547,29 @@ class TrialPlan(object):
     :ivar sequence: sequence of 1-based hole numbers to be offered
 
     :ivar serial_order_choice: serial positions within the offered sequence to
-        offer as choices
+        offer as choices (will be SORTED as they are offered simultaneously)
 
-    :ivar hole_choice: hole positions to offer for the choice
+    :ivar hole_choice: hole positions to offer for the choice (will be SORTED
+        as they are offered simultaneously)
+
+    What's independent?
+
+    - ``sequence`` and ``serial_order_choice`` are independent
+    - ``sequence`` and ``correct_is_on_right`` are not independent
+      (they are mediated by ``serial_order_choice``)
+    - ``serial_order_choice`` and ``correct_is_on_right`` are not independent
+      (they are mediated by ``sequence``)
     """
     def __init__(self, sequence: List[int],
                  serial_order_choice: List[int]) -> None:
         """
-        :param sequence: the sequence of hole numbers to be offered (e.g.
-            [3, 4, 1] to present hole 3, hole 4, and hole 1 in that order).
+        Args:
 
-        :param serial_order_choice: the serial order positions to be tested
-            (e.g. [1, 3] for the first and third).
+            sequence: the sequence of hole numbers to be offered (e.g.
+                [3, 4, 1] to present hole 3, hole 4, and hole 1 in that order).
+
+            serial_order_choice: the serial order positions to be tested
+                (e.g. [1, 3] for the first and third).
         """
         self.sequence = sequence  # type: List[int]
         self.serial_order_choice = sorted(serial_order_choice)
@@ -258,7 +579,8 @@ class TrialPlan(object):
     @property  # for debugging
     def correct_incorrect_holes(self) -> Tuple[int, int]:
         """
-        :return: a tuple: (correct_hole, incorrect_hole) for the test phase.
+        Returns:
+            tuple: ``(correct_hole, incorrect_hole)`` for the test phase.
         """
         serial_order_of_choice_holes = spatial_to_serial_order(
             self.sequence, self.hole_choice)
@@ -270,7 +592,8 @@ class TrialPlan(object):
     @property  # for debugging
     def correct_hole(self) -> int:
         """
-        :return: The correct hole number, from the test phase.
+        Returns:
+            The correct hole number, from the test phase.
         """
         correct, incorrect = self.correct_incorrect_holes
         return correct
@@ -278,7 +601,8 @@ class TrialPlan(object):
     @property  # for debugging
     def incorrect_hole(self) -> int:
         """
-        :return: The incorrect hole number, for the test phase.
+        Returns:
+            The incorrect hole number, for the test phase.
         """
         correct, incorrect = self.correct_incorrect_holes
         return incorrect
@@ -286,10 +610,19 @@ class TrialPlan(object):
     @property  # for debugging
     def correct_is_on_right(self) -> bool:
         """
-        :return: Is the correct hole on the right?
+        Returns:
+             Is the correct hole on the right?
         """
         correct, incorrect = self.correct_incorrect_holes
         return correct > incorrect
+
+    @property  # for debugging
+    def sequence_length(self) -> int:
+        """
+        Returns:
+            The length of the sequence presented.
+        """
+        return len(self.sequence)
 
     def __repr__(self) -> str:
         return (
@@ -304,13 +637,21 @@ class TrialPlan(object):
     #     return self.serial_order_choice + self.hole_choice
 
     def meets_restrictions(
-            self, test_hole_restrictions: TestHoleRestrictions = None) -> bool:
+            self,
+            choice_hole_restriction: ChoiceHoleRestriction = None,
+            serial_pos_restriction: SerialPosRestriction = None) \
+            -> bool:
         """
         Does the trial plan meet the specified restrictions?
         """
-        if not test_hole_restrictions:
-            return True
-        return test_hole_restrictions.permissible(self.hole_choice)
+        if choice_hole_restriction:
+            if not choice_hole_restriction.permissible(self.hole_choice):
+                return False
+        if serial_pos_restriction:
+            if not serial_pos_restriction.permissible(
+                    self.serial_order_choice):
+                return False
+        return True
 
 
 # =============================================================================
@@ -394,9 +735,12 @@ class Config(SqlAlchemyAttrDictMixin, Base):
         """
         Makes a copy of itself and adds it to the specified SQLAlchemy session.
 
-        :param session: the SQLAlchemy session into which to insert the copy.
-        :param read_only: sets the ``read_only`` property of the copy.
-        :return: the copy.
+        Args:
+            session: the SQLAlchemy session into which to insert the copy.
+            read_only: sets the ``read_only`` property of the copy.
+
+        Returns:
+            the copy.
         """
         newconfig = deepcopy_sqla_object(self, session,
                                          flush=False)  # type: Config
@@ -421,8 +765,6 @@ class Config(SqlAlchemyAttrDictMixin, Base):
 class ConfigStage(SqlAlchemyAttrDictMixin, Base):
     """
     SQLAlchemy model for the ``config_stage`` table.
-
-    .. todo:: implement hole restrictions, ConfigStage
     """
     __tablename__ = 'config_stage'
 
@@ -434,6 +776,9 @@ class ConfigStage(SqlAlchemyAttrDictMixin, Base):
 
     # Sequence
     sequence_length = Column(Integer)
+    choice_hole_restriction = Column(ChoiceHoleRestrictionType, nullable=True)
+    serial_pos_restriction = Column(SerialPosRestrictionType, nullable=True)
+    side_dwor_multiplier = Column(Integer)
     # Limited hold
     limited_hold_s = Column(Float)
     # Progress to next stage when X of last Y correct, or total trials complete
@@ -442,20 +787,43 @@ class ConfigStage(SqlAlchemyAttrDictMixin, Base):
     stop_after_n_trials = Column(Integer)
 
     def __init__(self, **kwargs) -> None:
-        """Must be clonable by deepcopy_sqla_object(), so must accept empty
-        kwargs."""
-        self.config_id = kwargs.pop('config_id', None)
-        self.stagenum = kwargs.pop('stagenum', None)
-        self.sequence_length = kwargs.pop('sequence_length', None)
-        self.limited_hold_s = kwargs.pop('limited_hold_s', 10)
+        """
+        Must be clonable by deepcopy_sqla_object(), so must accept empty
+        kwargs.
+        """
+        self.config_id = kwargs.pop('config_id', None)  # type: int
+        self.stagenum = kwargs.pop('stagenum', None)  # type: int
+        self.choice_hole_restriction = kwargs.pop(
+            'choice_hole_restriction', None)  # type: ChoiceHoleRestriction
+        self.side_dwor_multiplier = kwargs.pop('side_dwor_multiplier', 1)
+        self.sequence_length = kwargs.pop('sequence_length', None)  # type: int
+        self.limited_hold_s = kwargs.pop('limited_hold_s', 10)  # type: float
         self.progression_criterion_x = kwargs.pop('progression_criterion_x',
-                                                  10)
+                                                  10)  # type: int
         self.progression_criterion_y = kwargs.pop('progression_criterion_y',
-                                                  12)
+                                                  12)  # type: int
         # In R: use binom.test(x, y) to get the p value for these.
         # Here, the defaults are such that progression requires p = 0.03857.
-        self.stop_after_n_trials = kwargs.pop('stop_after_n_trials', 100)
+        self.stop_after_n_trials = kwargs.pop('stop_after_n_trials', 100)  # type: int  # noqa
         super().__init__(**kwargs)
+
+    @property
+    def choice_hole_restriction_desc(self) -> str:
+        """
+        Returns the description of any choice_hole_restriction.
+        """
+        if not self.choice_hole_restriction:
+            return ""
+        return self.choice_hole_restriction.description()
+
+    @property
+    def serial_pos_restriction_desc(self) -> str:
+        """
+        Returns the description of any serial_pos_restriction.
+        """
+        if not self.serial_pos_restriction:
+            return ""
+        return self.serial_pos_restriction.description()
 
 
 # =============================================================================
@@ -482,8 +850,8 @@ class TaskSession(SqlAlchemyAttrDictMixin, Base):
     trials_correct = Column(Integer, nullable=False, default=0)
 
     def __init__(self, **kwargs) -> None:
-        self.config_id = kwargs.pop('config_id')
-        self.started_at = kwargs.pop('started_at')
+        self.config_id = kwargs.pop('config_id')  # type: int
+        self.started_at = kwargs.pop('started_at')  # type: arrow.Arrow
         self.trials_responded = 0
         self.trials_correct = 0
         self.software_version = SERIAL_ORDER_VERSION
@@ -560,7 +928,8 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         """
         Sets the sequence for the first phase of the trial.
 
-        :param sequence_holes: ordered list of hole numbers.
+        Args:
+            sequence_holes: ordered list of hole numbers.
         """
         self.sequence_holes = list(sequence_holes)  # make a copy
         self.sequence_length = len(sequence_holes)
@@ -569,7 +938,8 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         """
         Sets the choice holes offered in the second phase of the trial.
 
-        :param choice_holes: a list, of length 2, of the hole numbers.
+        Args:
+             choice_holes: a list, of length 2, of the hole numbers.
         """
         assert len(choice_holes) == 2
         assert all(x in self.sequence_holes for x in choice_holes)
@@ -658,9 +1028,10 @@ class Trial(SqlAlchemyAttrDictMixin, Base):
         Records the response during the choice phase.
         IMPLEMENTS THE KEY TASK RULE: "Which came first?"
 
-        :param response_hole: the hole that the subject responded to
-        :param timestamp: when the response occurred
-        :return: was the response correct?
+        Args:
+            response_hole: the hole that the subject responded to
+            timestamp: when the response occurred
+            was the response correct?
         """
         self.responded = True
         self.responded_at = timestamp

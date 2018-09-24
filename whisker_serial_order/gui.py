@@ -24,6 +24,7 @@ Graphical user interface (GUI) classes for the serial order task.
 
 """
 
+import argparse
 import logging
 import traceback
 from typing import Any, Dict, Optional
@@ -59,8 +60,6 @@ from whisker.qt import (
     exit_on_exception,
     GenericAttrTableModel,
     GenericAttrTableView,
-    # GenericListModel,
-    # ModalEditListView,
     StyledQGroupBox,
     TextLogElement,
     TransactionalDialog,
@@ -71,12 +70,17 @@ from whisker_serial_order.constants import (
     ABOUT,
     ALEMBIC_BASE_DIR,
     ALEMBIC_CONFIG_FILENAME,
-    MANUAL_FILENAME,
+    DOCUMENTATION_URL,
     N_HOLES,
     MSG_DB_ENV_VAR_NOT_SPECIFIED,
     WRONG_DATABASE_VERSION_STUB,
 )
-from whisker_serial_order.models import Config, ConfigStage
+from whisker_serial_order.models import (
+    ChoiceHoleRestriction,
+    Config,
+    ConfigStage,
+    SerialPosRestriction,
+)
 from whisker_serial_order.task import SerialOrderTask
 
 log = logging.getLogger(__name__)
@@ -206,10 +210,13 @@ class ConfigStageTableModel(GenericAttrTableModel):
     HEADINGS = [
         ("Stage#", "stagenum"),
         ("Seq.len.", "sequence_length"),
+        ("Choice holes", "choice_hole_restriction_desc"),
+        ("Serial pos", "serial_pos_restriction_desc"),
         ("Lim.hold(s)", "limited_hold_s"),
         ("Progress X", "progression_criterion_x",),
         ("Progress Y", "progression_criterion_y"),
         ("Stop N", "stop_after_n_trials"),
+        ("Side DWOR mult.", "side_dwor_multiplier")
     ]
     DEFAULT_SORT_COLUMN_NAME = "get_modified_at_pretty"
 
@@ -516,9 +523,9 @@ class MainWindow(QMainWindow):
     # noinspection PyArgumentList
     @pyqtSlot()
     def help(self) -> None:
-        log.info("Help: launching {}".format(MANUAL_FILENAME))
-        launch_external_file(MANUAL_FILENAME)
-        self.status("Launched {}".format(MANUAL_FILENAME))
+        log.info("Help: launching {}".format(DOCUMENTATION_URL))
+        launch_external_file(DOCUMENTATION_URL)
+        self.status("Launched {}".format(DOCUMENTATION_URL))
 
 
 # =============================================================================
@@ -719,7 +726,7 @@ class ConfigWindow(TransactionalEditDialogMixin, QDialog):
             readonly=readonly)
         self.stages_lv.selected_maydelete.connect(
             self.set_stages_button_states)
-        self.stages_lv.setMinimumWidth(500)
+        self.stages_lv.setMinimumWidth(750)
 
         # Layout/buttons
         whisker_group = StyledQGroupBox('Whisker')
@@ -859,47 +866,47 @@ class ConfigWindow(TransactionalEditDialogMixin, QDialog):
         try:
             obj.server = self.server_edit.text()
             assert len(obj.server) > 0
-        except:
+        except AssertionError:
             raise ValidationError("Invalid server name")
         try:
             obj.port = int(self.port_edit.text())
             assert obj.port > 0
-        except:
+        except (AssertionError, TypeError, ValueError):
             raise ValidationError("Invalid port number")
         try:
             obj.devicegroup = self.devicegroup_edit.text()
             assert len(obj.devicegroup) > 0
-        except:
+        except AssertionError:
             raise ValidationError("Invalid device group name")
 
         try:
             obj.subject = self.subject_edit.text()
             assert len(obj.subject) > 0
-        except:
+        except AssertionError:
             raise ValidationError("Invalid subject name")
 
         try:
             obj.reinf_n_pellets = int(self.reinf_n_pellets_edit.text())
             assert obj.reinf_n_pellets > 0
-        except:
+        except (AssertionError, TypeError, ValueError):
             raise ValidationError("Invalid # pellets")
         try:
             obj.reinf_pellet_pulse_ms = int(
                 self.reinf_pellet_pulse_ms_edit.text())
             assert obj.reinf_pellet_pulse_ms > 0
-        except:
+        except (AssertionError, TypeError, ValueError):
             raise ValidationError("Invalid pellet pulse time")
         try:
             obj.reinf_interpellet_gap_ms = int(
                 self.reinf_interpellet_gap_ms_edit.text())
             assert obj.reinf_interpellet_gap_ms > 0
-        except:
+        except (AssertionError, TypeError, ValueError):
             raise ValidationError("Invalid interpellet gap")
 
         try:
             obj.iti_duration_ms = int(self.iti_edit.text())
             assert obj.iti_duration_ms > 0
-        except:
+        except (AssertionError, TypeError, ValueError):
             raise ValidationError("Invalid ITI duration")
         obj.repeat_incomplete_trials = self.repeat_incomplete_check.isChecked()
 
@@ -907,12 +914,12 @@ class ConfigWindow(TransactionalEditDialogMixin, QDialog):
             obj.session_time_limit_min = float(
                 self.session_time_limit_edit.text())
             assert obj.session_time_limit_min > 0
-        except:
+        except (AssertionError, TypeError, ValueError):
             raise ValidationError("Invalid session time limit (must be >0)")
 
         try:
             assert obj.has_stages()
-        except:
+        except AssertionError:
             raise ValidationError("No stages specified")
 
 
@@ -923,8 +930,6 @@ class ConfigWindow(TransactionalEditDialogMixin, QDialog):
 class StageConfigDialog(TransactionalEditDialogMixin, QDialog):
     """
     Edits a :class:`.ConfigStage` object.
-
-    .. todo:: implement hole restrictions, StageConfigDialog
     """
 
     # noinspection PyArgumentList
@@ -940,6 +945,13 @@ class StageConfigDialog(TransactionalEditDialogMixin, QDialog):
         self.setWindowTitle("Configure stage")
 
         self.seqlen_edit = QLineEdit(placeholderText="range 2-5")
+        self.choice_restriction_edit = QLineEdit(
+            placeholderText="e.g. 1,2;3,5 to restrict to holes 1+2 and 3+5")
+        self.serial_pos_restriction_edit = QLineEdit(
+            placeholderText="e.g. 1,2;2,3 to restrict to serial positions "
+                            "1v2 and 2v3")
+        self.side_dwor_multiplier_edit = QLineEdit(
+            placeholderText="Integer >= 1. See documentation!")
         self.limhold_edit = QLineEdit(placeholderText="must be >0")
         self.progress_x_edit = QLineEdit(placeholderText="specify X")
         self.progress_y_edit = QLineEdit(placeholderText="specify Y")
@@ -948,6 +960,15 @@ class StageConfigDialog(TransactionalEditDialogMixin, QDialog):
         sequence_group = StyledQGroupBox('Sequence')
         sequence_form = QFormLayout()
         sequence_form.addRow("Sequence length", self.seqlen_edit)
+        sequence_form.addRow("Optional restrictions on choice holes",
+                             self.choice_restriction_edit)
+        sequence_form.addRow(
+            "Optional restrictions on serial position combinations tested",
+            self.serial_pos_restriction_edit)
+        sequence_form.addRow(
+            "Draw-without-replacement (DWOR) multiplier for<br>"
+            "counterbalancing correct L/R side",
+            self.side_dwor_multiplier_edit)
         sequence_group.setLayout(sequence_form)
 
         limhold_group = StyledQGroupBox('Limited hold')
@@ -972,6 +993,11 @@ class StageConfigDialog(TransactionalEditDialogMixin, QDialog):
 
     def object_to_dialog(self, obj: ConfigStage) -> None:
         self.seqlen_edit.setText(str(obj.sequence_length or ''))
+        self.choice_restriction_edit.setText(obj.choice_hole_restriction_desc)
+        self.serial_pos_restriction_edit.setText(
+            obj.serial_pos_restriction_desc)
+        self.side_dwor_multiplier_edit.setText(
+            str(obj.side_dwor_multiplier or ''))
         self.limhold_edit.setText(str(obj.limited_hold_s or ''))
         self.progress_x_edit.setText(str(obj.progression_criterion_x or ''))
         self.progress_y_edit.setText(str(obj.progression_criterion_y or ''))
@@ -981,29 +1007,56 @@ class StageConfigDialog(TransactionalEditDialogMixin, QDialog):
         try:
             obj.sequence_length = int(self.seqlen_edit.text())
             assert 2 <= obj.sequence_length <= N_HOLES
-        except:
+        except (AssertionError, TypeError, ValueError):
             raise ValidationError("Invalid sequence length")
+
+        try:
+            cr_text = self.choice_restriction_edit.text()
+            obj.choice_hole_restriction = (
+                ChoiceHoleRestriction(cr_text) if cr_text else None
+            )
+        except argparse.ArgumentTypeError:
+            raise ValidationError("Invalid choice hole restriction")
+
+        try:
+            sp_text = self.serial_pos_restriction_edit.text()
+            obj.serial_pos_restriction = (
+                SerialPosRestriction(sp_text) if sp_text else None
+            )
+        except argparse.ArgumentTypeError:
+            raise ValidationError("Invalid serial position restriction")
+
+        try:
+            obj.side_dwor_multiplier = int(
+                self.side_dwor_multiplier_edit.text())
+        except (AssertionError, TypeError, ValueError):
+            raise ValidationError("Invalid DWOR multiplier")
+
         try:
             obj.limited_hold_s = float(self.limhold_edit.text())
             assert obj.limited_hold_s > 0
-        except:
+        except (AssertionError, TypeError, ValueError):
             raise ValidationError("Invalid limited hold")
+
         try:
             obj.progression_criterion_x = int(self.progress_x_edit.text())
             assert obj.progression_criterion_x >= 1
-        except:
+        except (AssertionError, TypeError, ValueError):
             raise ValidationError("Invalid X")
+
         try:
             obj.progression_criterion_y = int(self.progress_y_edit.text())
             assert obj.progression_criterion_y >= 1
-        except:
+        except (AssertionError, TypeError, ValueError):
             raise ValidationError("Invalid Y")
+
         try:
             assert obj.progression_criterion_x <= obj.progression_criterion_y
-        except:
+        except (AssertionError, TypeError, ValueError):
             raise ValidationError("Must have: X <= Y")
+
         try:
             obj.stop_after_n_trials = int(self.stop_n_edit.text())
             assert obj.stop_after_n_trials >= 1
-        except:
+        except (AssertionError, TypeError, ValueError):
             raise ValidationError("Invalid N")

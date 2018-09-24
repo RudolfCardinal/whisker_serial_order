@@ -1,4 +1,4 @@
-..  whisker_serial_order/docs/source/command_line_options.rst
+..  docs/source/command_line_options.rst
 
 ..  Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
     .
@@ -27,7 +27,7 @@ Command-line options as of 2018-09-09:
                                 [--outdir OUTDIR] [--gui] [--schema] [--java JAVA]
                                 [--plantuml PLANTUML] [--schemastem SCHEMASTEM]
                                 [--testtrialplan] [--seqlen SEQUENCE_LEN]
-                                [--test_hole_restrictions TEST_HOLE_GROUPS]
+                                [--choice_hole_restriction TEST_HOLE_GROUPS]
 
     whisker_serial_order v0.6.0. Serial order task for Whisker.
 
@@ -57,7 +57,7 @@ Command-line options as of 2018-09-09:
                             length +/- restrictions
       --seqlen SEQUENCE_LEN
                             Sequence length for --testtrialplan
-      --test_hole_restrictions TEST_HOLE_GROUPS
-                            Optional test hole restrictions for --testtrialplan;
-                            use e.g. '--test_hole_restrictions "1,2;3,4"' to
-                            restrict the test phase to holes 1 v 2 and 3 v 4
+      --choice_hole_restriction CHOICE_HOLE_GROUPS
+                            Optional choice hole restrictions for --testtrialplan;
+                            use e.g. '--choice_hole_restriction "1,2;3,4"' to
+                            restrict the choice phase to holes 1 v 2 and 3 v 4

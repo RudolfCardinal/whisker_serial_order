@@ -46,8 +46,9 @@ def set_database_url(url: str) -> None:
     """
     Sets the global SQLAlchemy database URL.
 
-    :param url: SQLAlchemy URL; see
-        http://docs.sqlalchemy.org/en/latest/core/engines.html
+    Args:
+        url: SQLAlchemy URL; see
+            http://docs.sqlalchemy.org/en/latest/core/engines.html
     """
     global dbsettings
     dbsettings['url'] = url

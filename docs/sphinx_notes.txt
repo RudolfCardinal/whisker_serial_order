@@ -40,7 +40,7 @@ as per
     https://www.python.org/dev/peps/pep-0257/#what-is-a-docstring
     https://www.python.org/dev/peps/pep-0258/#attribute-docstrings
 
-get reported by Sphinx with "= None", like
+which is a bit nasty, also get reported by Sphinx with "= None", like
 
     a = None
 
@@ -62,3 +62,9 @@ See
 
     https://sphinxcontrib-napoleon.readthedocs.io/en/latest/
 
+This is good:
+
+    https://stackoverflow.com/questions/3898572/what-is-the-standard-python-docstring-format
+
+":ivar" means "instance variable", as per
+    http://epydoc.sourceforge.net/manual-fields.html

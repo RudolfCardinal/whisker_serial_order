@@ -1,4 +1,4 @@
-..  whisker_serial_order/docs/source/device_definitions.rst
+..  docs/source/device_definitions.rst
 
 ..  Copyright © 2016-2018 Rudolf Cardinal (rudolf@pobox.com).
     .

@@ -25,10 +25,13 @@ Additional functions.
 """
 
 import datetime
-from typing import Optional, Union
+import logging
+from typing import Any, List, Optional, Union
 import arrow
 
 TimeType = Union[datetime.datetime, arrow.Arrow]
+
+log = logging.getLogger(__name__)
 
 
 def latency_s(t1: Optional[TimeType],
@@ -36,11 +39,42 @@ def latency_s(t1: Optional[TimeType],
     """
     Calculates the latency in seconds between two datetime-type objects.
 
-    :param t1: start time
-    :param t2: end time
-    :return: time difference in seconds, or ``None`` if either were ``None``
+    Args:
+        t1: start time
+        t2: end time
+
+    Returns:
+        time difference in seconds, or ``None`` if either were ``None``
     """
     if t1 is None or t2 is None:
         return None
     delta = t2 - t1
     return delta.microseconds / 1000000
+
+
+def enumerate_to_log(items: List[Any],
+                     description: str = "",
+                     start: int = 1,
+                     linesep: str = "\n",
+                     index_suffix: str = ". ",
+                     loglevel: int = logging.DEBUG) -> None:
+    r"""
+    Describes a list to the log.
+
+    Args:
+        items: list of items
+        start: index to start at (default 1)
+        description: description
+        linesep: line separator (default '\n')
+        index_suffix: index suffix (default '. ')
+        loglevel: log level
+    """
+    msg = description + linesep + linesep.join(
+        "{index}{index_suffix}{item}".format(
+            index=index,
+            index_suffix=index_suffix,
+            item=item
+        )
+        for index, item in enumerate(items, start=start)
+    )
+    log.log(loglevel, msg)
