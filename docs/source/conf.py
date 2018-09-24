@@ -84,10 +84,11 @@ pygments_style = 'sphinx'
 # a list of builtin themes.
 #
 # html_theme = 'alabaster'  # no
-html_theme = 'classic'  # this is OK; does struggle with over-right-justifying
+# html_theme = 'classic'  # this is OK; does struggle with over-right-justifying
 # html_theme = 'nature'  # this is OK
 # html_theme = 'pyramid'  # no
 # html_theme = 'bizstyle'  # this is OK
+html_theme = "sphinx_rtd_theme"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
