@@ -17,15 +17,15 @@ a = Analysis(
         # tuple is: source path/glob, destination directory
         # (regardless of what the docs suggest) and '' seems to
         # work for "the root directory"
-        ('whisker_serial_order/MANUAL.pdf', ''),
-        ('whisker_serial_order/alembic.ini', ''),
+        # ... no, not as of PyInstaller==3.4 (2018-09-24); use '.'
+        ('whisker_serial_order/alembic.ini', '.'),
         ('whisker_serial_order/alembic/env.py', 'alembic'),
         ('whisker_serial_order/alembic/versions/*.py', 'alembic/versions'),
     ],
     hiddenimports=[
-        'whisker.alembic',  # used by alembic/versions/*
+        'cardinal_pythonlib.sqlalchemy.alembic_ops',  # used by alembic/versions/*  # noqa
     ],
-    # hookspath=['hooks'],
+    hookspath=['pyinstaller_hooks'],
     runtime_hooks=[],
     excludes=[],
     win_no_prefer_redirects=False,
