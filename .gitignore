@@ -11,3 +11,5 @@ whisker_serial_order.egg-info/*
 requirements.txt
 schema.plantuml
 
+plantuml.jar
+

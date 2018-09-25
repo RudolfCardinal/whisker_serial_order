@@ -20,12 +20,12 @@ Task operation
 
 When you start successfully, it’ll look like this:
 
-.. image:: screenshots/first_screen.png
+.. image:: screenshots/01_first_screen.png
     :align: center
 
 First, configure:
 
-.. image:: screenshots/configure.png
+.. image:: screenshots/02_configure.png
     :align: center
 
 At the top are *editable* configurations. Edit them, and then select one (and
@@ -36,7 +36,7 @@ back into the editable list, as well.)
 
 When you edit a config, you see this:
 
-.. image:: screenshots/edit_config.png
+.. image:: screenshots/03_edit_config.png
     :align: center
 
 Note that the default Whisker server is **localhost** (meaning “this computer”)
@@ -46,7 +46,7 @@ file [#ddf]_.
 
 When you edit a stage definition, you see this:
 
-.. image:: screenshots/configure_stage.png
+.. image:: screenshots/04_configure_stage.png
     :align: center
 
 When you’re happy with everything, select the config and click **Start** at the
