@@ -46,6 +46,14 @@ v0.6.0 – Sep 2018
   - ``alembic`` from 0.8.4 to 1.0.0
   - ``python-dateutil`` from 2.5.1 to 2.7.3
   - ``whisker`` from 1.0.0 to 1.1.0
+  - ``SQLAlchemy`` from 1.2.0b2 to 1.2.12 (to fix ``Unknown system variable
+    'tx_isolation'`` bug with MySQL 8.0.12)
+  - ``sadisplay`` from 0.4.8 to 0.4.9
+  - ``sqlalchemy-utils`` from 0.32.13 to 0.33.5
+
+- Note that if you install MySQL Connector/Python system-wide (via the MySQL
+  installer), it may not be available from a virtual environment; in that case,
+  use ``pip install mysql-connector-python``.
 
 - ``MAX_VERSION_LENGTH`` set to its proper value of 147.
 

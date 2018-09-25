@@ -47,4 +47,4 @@ Outputs:
     SO_STIMLIGHT_5
     HOUSELIGHT
     PELLET
-    MAGLIGHT
+    TRAYLIGHT

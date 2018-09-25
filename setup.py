@@ -95,9 +95,9 @@ INSTALL_REQUIRES = [
     'cardinal_pythonlib==1.0.28',
     'python-dateutil==2.7.3',
     'PyQt5==5.8',  # Python interface to Qt
-    'SQLAlchemy==1.2.0b2',  # SQL Alchemy database interface
-    'sqlalchemy-utils==0.32.13',  # http://sqlalchemy-utils.readthedocs.org/
-    'sadisplay==0.4.8',  # SQL Alchemy schema display script
+    'SQLAlchemy==1.2.12',  # SQL Alchemy database interface
+    'sqlalchemy-utils==0.32.5',  # http://sqlalchemy-utils.readthedocs.org/
+    'sadisplay==0.4.9',  # SQL Alchemy schema display script
     'whisker==1.1.0',  # Whisker client library
 
     # 'mysqlclient',  # MySQL engine (Python 3 replacement for MySQLdb)
@@ -109,6 +109,7 @@ INSTALL_REQUIRES = [
     # ---------------------------------------------------------------------
     # For development only:
     # ---------------------------------------------------------------------
+    # pyinstaller==3.4  # for building packaged executables
     # twine  # for uploading to PyPI
     # sphinx  # for building docs
 ]

@@ -105,14 +105,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="whisker_serial_order v{}. Serial order task for "
         "Whisker.".format(SERIAL_ORDER_VERSION))
-    parser.add_argument("--logfile", default=None,
-                        help="Filename to append log to")
-    parser.add_argument('--verbose', '-v', action='count', default=0,
-                        help="Be verbose. (Use twice for extra verbosity.)")
-    parser.add_argument('--guilog', action="store_true",
-                        help="Show Python log in a GUI window")
-    parser.add_argument('--upgrade-database', action="store_true",
-                        help="Upgrade database to current version.")
+    parser.add_argument(
+        "--logfile", default=None,
+        help="Filename to append log to")
+    parser.add_argument(
+        '--verbose', '-v', action='count', default=0,
+        help="Be verbose. (Use twice for extra verbosity.)")
+    parser.add_argument(
+        '--guilog', action="store_true",
+        help="Show Python log in a GUI window")
+    parser.add_argument(
+        '--upgrade-database', action="store_true",
+        help="Upgrade database to current version.")
     # parser.add_argument('--debug-qt-signals', action="store_true",
     #                     help="Debug QT signals.")
     parser.add_argument(

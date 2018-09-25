@@ -139,6 +139,7 @@ for h in ALL_HOLE_NUMS:
     DEV_DI["HOLE_{}".format(h)] = "SO_HOLE_{}".format(h)
 
 DEV_DO = AttrDict({
+    # Maps attributes used in this code to Whisker device names.
     'HOUSELIGHT': 'HOUSELIGHT',
     'PELLET': 'PELLET',
     'MAGLIGHT': 'TRAYLIGHT',
