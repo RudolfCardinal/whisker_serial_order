@@ -54,12 +54,6 @@ from PyInstaller.utils.hooks import collect_data_files
 
 log = logging.getLogger(__name__)
 
-TEST_HOOK = False
-if TEST_HOOK:
-    log.critical("Deliberately aborting to test PyInstaller hook")
-    sys.exit(1)
-
-
 def no_pyc(data_files: Iterable[Tuple[str, str]]) \
         -> Generator[Tuple[str, str], None, None]:
     """
@@ -73,3 +67,9 @@ def no_pyc(data_files: Iterable[Tuple[str, str]]) \
 
 datas = list(no_pyc(collect_data_files("pendulum.locales",
                                        include_py_files=True)))
+
+TEST_HOOK = False
+if TEST_HOOK:
+    log.critical("Deliberately aborting to test PyInstaller hook")
+    log.critical("datas = \n" + "\n".join(repr(x) for x in datas))
+    sys.exit(1)
