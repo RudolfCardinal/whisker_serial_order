@@ -59,6 +59,55 @@ Make sure you use a database with appropriate concurrency
 (multi-user/multi-client) support; see :ref:`databases`.
 
 
+Notes on individual parameters
+==============================
+
+Draw-without-replacement multiplier...
+--------------------------------------
+
+A draw-without-replacement (DWOR) "multiplier" works as follows (also at
+http://www.whiskercontrol.com/help/MonkeyCantab/index.html?monkeycantab_dwor.htm).
+
+- Suppose you have *n* things -- e.g. two things, "left" and "right".
+- You have an imaginary hat and you put things into the hat. You put in *m*
+  copies of each of the *n* things, where *m* is the DWOR multiplier.
+
+  - So if the DWOR multiplier is 1, you put "left" and "right" into the hat.
+  - If the DWOR multiplier is 3, you put "left", "left", "left", "right",
+    "right", "right" into the hat.
+
+- You shake the hat to shuffle its contents.
+- You draw out one thing at a time, and don't put it back ("draw without
+  replacement").
+- When you run out, you refill the hat as above.
+
+This task offers a DWOR multipler for the correct side allocation (left or
+right).
+
+So, this means that if your DWOR multiplier is 1, then in every 2 trials you
+get one L and one R. You can get sequences like L R, R L, L R, L R, R L, R L, R
+L, L R. This is good for consistency and local counterbalancing, but it does
+mean that every second trial is completely predictable if the subject works out
+the rule.
+
+If your DWOR multiplier is 3, then in every 6 trials you get 3 L and 3 R. You
+can get sequences like R L L R R L, L L L R R R, L L L R R R, L R R L R L, R R
+R L L L, etc.
+
+As your DWOR multiplier moves towards infinity, you move towards "true"
+randomness (but experimenters tend to dislike that because it doesn't exclude
+very long runs of L L L L L L L... etc., even if they are rare).
+
+Note that you can run the program with the ``--testtrialplan`` option to see a
+trial plan and then stop (see ``--help`` for more options). Try, for example:
+
+.. code-block:: none
+
+    whisker_serial_order --testtrialplan --seqlen 2 --side_dwor_multiplier 1
+    whisker_serial_order --testtrialplan --seqlen 2 --side_dwor_multiplier 3
+
+
+
 .. rubric:: Footnotes
 
 .. [#fiveholebox]
